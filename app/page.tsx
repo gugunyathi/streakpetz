@@ -1,120 +1,163 @@
-"use client";
-import { useState, useEffect } from "react";
-import { useQuickAuth,useMiniKit } from "@coinbase/onchainkit/minikit";
-import { useRouter } from "next/navigation";
-import { minikitConfig } from "../minikit.config";
-import styles from "./page.module.css";
+'use client';
 
-interface AuthResponse {
-  success: boolean;
-  user?: {
-    fid: number; // FID is the unique identifier for the user
-    issuedAt?: number;
-    expiresAt?: number;
-  };
-  message?: string; // Error messages come as 'message' not 'error'
-}
-
+import React, { useState, useEffect } from 'react';
+import PetDisplay from '@/components/PetDisplay';
+import { Pet, PetStage, createPet, updatePetAfterInteraction } from '@/lib/pet';
 
 export default function Home() {
-  const { isFrameReady, setFrameReady, context } = useMiniKit();
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const router = useRouter();
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string>('');
 
-  // Initialize the  miniapp
+  // Initialize pet on component mount
   useEffect(() => {
-    if (!isFrameReady) {
-      setFrameReady();
-    }
-  }, [setFrameReady, isFrameReady]);
- 
-  
+    // For demo purposes, create a default pet
+    // In production, this would check if user has an existing pet
+    const defaultPet = createPet('StreakPet', 'pet_wallet_123', 'user_wallet_456');
+    setPet(defaultPet);
+    setWalletAddress('0x60Dd...363C');
+    setIsConnected(true);
+  }, []);
 
-  // If you need to verify the user's identity, you can use the useQuickAuth hook.
-  // This hook will verify the user's signature and return the user's FID. You can update
-  // this to meet your needs. See the /app/api/auth/route.ts file for more details.
-  // Note: If you don't need to verify the user's identity, you can get their FID and other user data
-  // via `context.user.fid`.
-  // const { data, isLoading, error } = useQuickAuth<{
-  //   userFid: string;
-  // }>("/api/auth");
-
-  const { data: authData, isLoading: isAuthLoading, error: authError } = useQuickAuth<AuthResponse>(
-    "/api/auth",
-    { method: "GET" }
-  );
-
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    // Check authentication first
-    if (isAuthLoading) {
-      setError("Please wait while we verify your identity...");
-      return;
-    }
-
-    if (authError || !authData?.success) {
-      setError("Please authenticate to join the waitlist");
-      return;
-    }
-
-    if (!email) {
-      setError("Please enter your email address");
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address");
-      return;
-    }
-
-    // TODO: Save email to database/API with user FID
-    console.log("Valid email submitted:", email);
-    console.log("User authenticated:", authData.user);
+  const handlePetInteraction = (action: string) => {
+    if (!pet) return;
     
-    // Navigate to success page
-    router.push("/success");
+    const updatedPet = updatePetAfterInteraction(pet, action);
+    setPet(updatedPet);
+    
+    // Here you would also:
+    // 1. Send XMTP message to pet wallet
+    // 2. Update pet state in backend
+    // 3. Trigger AI response
+    console.log(`Pet interaction: ${action}, XP gained!`);
   };
 
-  return (
-    <div className={styles.container}>
-      <button className={styles.closeButton} type="button">
-        ✕
-      </button>
-      
-      <div className={styles.content}>
-        <div className={styles.waitlistForm}>
-          <h1 className={styles.title}>Join {minikitConfig.miniapp.name.toUpperCase()}</h1>
-          
-          <p className={styles.subtitle}>
-             Hey {context?.user?.displayName || "there"}, Get early access and be the first to experience the future of<br />
-            crypto marketing strategy.
-          </p>
+  const handleDisconnect = () => {
+    setIsConnected(false);
+    setWalletAddress('');
+  };
 
-          <form onSubmit={handleSubmit} className={styles.form}>
-            <input
-              type="email"
-              placeholder="Your amazing email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={styles.emailInput}
-            />
-            
-            {error && <p className={styles.error}>{error}</p>}
-            
-            <button type="submit" className={styles.joinButton}>
-              JOIN WAITLIST
-            </button>
-          </form>
+  if (!pet) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-200 via-pink-200 to-purple-300 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-700">Loading your StreakPet...</p>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-200 via-pink-200 to-purple-300">
+      {/* Header */}
+      <header className="flex justify-between items-center p-4 bg-white/20 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="text-2xl">🐣</div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">StreakPet Chat</h1>
+            <p className="text-sm text-gray-600">Your digital companion</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {isConnected && (
+            <div className="flex items-center gap-2 bg-green-100 px-3 py-1 rounded-full">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm text-green-800">{walletAddress}</span>
+              <button
+                onClick={handleDisconnect}
+                className="text-xs text-red-600 hover:text-red-800"
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+          
+          <button className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-full text-sm transition-colors">
+            Solo Mode
+          </button>
+          
+          <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full text-sm flex items-center gap-2 transition-colors">
+            👥 Invite Friends
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          {/* Pet Display */}
+          <div className="bg-white/30 backdrop-blur-sm rounded-3xl p-6 mb-6">
+            <PetDisplay pet={pet} onInteraction={handlePetInteraction} />
+          </div>
+
+          {/* Chat Interface */}
+          <div className="bg-white/30 backdrop-blur-sm rounded-3xl p-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="text-pink-600">💕</div>
+              <span className="mx-2 text-gray-600">0 messages</span>
+            </div>
+            
+            <div className="bg-white/50 rounded-2xl p-4 mb-4 min-h-[200px] flex items-center justify-center">
+              <p className="text-gray-500 text-center">
+                Start chatting with your {pet.name}!<br />
+                <span className="text-sm">Your pet will respond with AI-powered messages</span>
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Chat with your StreakPet..."
+                className="flex-1 bg-white/70 rounded-full px-4 py-3 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button className="bg-purple-500 hover:bg-purple-600 text-white p-3 rounded-full transition-colors">
+                ✈️
+              </button>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="grid grid-cols-4 gap-4 mt-6">
+            <button
+              onClick={() => handlePetInteraction('play')}
+              className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 text-center hover:bg-white/40 transition-colors"
+            >
+              <div className="text-2xl mb-2">🎾</div>
+              <div className="text-sm font-medium text-gray-700">Play</div>
+            </button>
+            
+            <button
+              onClick={() => handlePetInteraction('groom')}
+              className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 text-center hover:bg-white/40 transition-colors"
+            >
+              <div className="text-2xl mb-2">✨</div>
+              <div className="text-sm font-medium text-gray-700">Groom</div>
+            </button>
+            
+            <button
+              onClick={() => handlePetInteraction('feed')}
+              className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 text-center hover:bg-white/40 transition-colors"
+            >
+              <div className="text-2xl mb-2">📚</div>
+              <div className="text-sm font-medium text-gray-700">Read</div>
+            </button>
+            
+            <button className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 text-center hover:bg-white/40 transition-colors">
+              <div className="text-2xl mb-2">🏪</div>
+              <div className="text-sm font-medium text-gray-700">Store</div>
+            </button>
+          </div>
+
+          {/* Bottom Stats */}
+          <div className="mt-6 text-center">
+            <div className="bg-white/20 backdrop-blur-sm rounded-full px-6 py-2 inline-block">
+              <span className="text-sm text-gray-700">XP: {pet.xp}/100</span>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
