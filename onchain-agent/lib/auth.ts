@@ -87,8 +87,26 @@ export function useAuth() {
   };
 
   const logout = async () => {
-    await signOut();
-    setWalletAddress(null);
+    try {
+      console.log('🚪 Logout initiated');
+      
+      // Immediate feedback - clear wallet address first
+      setWalletAddress(null);
+      console.log('✅ Wallet address cleared');
+      
+      // Sign out and redirect to home
+      console.log('📤 Calling signOut...');
+      await signOut({ 
+        callbackUrl: '/',
+        redirect: true 
+      });
+      console.log('✅ SignOut completed');
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+      // Force reload as fallback
+      console.log('🔄 Forcing reload as fallback');
+      window.location.href = '/';
+    }
   };
 
   const getAccessToken = async () => {

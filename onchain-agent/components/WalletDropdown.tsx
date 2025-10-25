@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
+import SendModal from './SendModal';
+import ReceiveModal from './ReceiveModal';
 
 interface WalletBalance {
   symbol: string;
@@ -17,7 +19,9 @@ interface WalletDropdownProps {
 export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<string>('0.00');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -37,7 +41,7 @@ export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDro
     const fetchUsdcBalance = async () => {
       if (!isOpen || !walletAddress) return;
       
-      setIsLoading(true);
+      setIsLoadingBalance(true);
       try {
         const response = await fetch('/api/wallet', {
           method: 'POST',
@@ -60,7 +64,7 @@ export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDro
         console.error('Failed to fetch USDC balance:', error);
         setUsdcBalance('0.00');
       } finally {
-        setIsLoading(false);
+        setIsLoadingBalance(false);
       }
     };
 
@@ -79,6 +83,40 @@ export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDro
   const copyAddress = () => {
     navigator.clipboard.writeText(walletAddress);
     // You could add a toast notification here
+  };
+
+  const openSendModal = () => {
+    setIsSendModalOpen(true);
+    setIsOpen(false);
+  };
+
+  const openReceiveModal = () => {
+    setIsReceiveModalOpen(true);
+    setIsOpen(false);
+  };
+
+  const handleSendSuccess = () => {
+    // Refresh balance after successful send
+    if (isOpen) {
+      setIsLoadingBalance(true);
+      fetch('/api/wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'getBalance',
+          walletAddress,
+          asset: 'USDC'
+        }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setUsdcBalance(data.balance || '0.00');
+          }
+        })
+        .catch(err => console.error('Failed to refresh balance:', err))
+        .finally(() => setIsLoadingBalance(false));
+    }
   };
 
   return (
@@ -141,7 +179,7 @@ export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDro
                   </div>
                 </div>
                 <div className="text-right">
-                  {isLoading ? (
+                  {isLoadingBalance ? (
                     <div className="w-16 h-4 bg-white/20 rounded animate-pulse"></div>
                   ) : (
                     <>
@@ -155,22 +193,52 @@ export default function WalletDropdown({ walletAddress, onOpenModal }: WalletDro
 
             {/* Actions */}
             <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <button
+                  onClick={openReceiveModal}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-green-500/30 hover:bg-green-500/40 text-green-200 font-semibold rounded-lg transition-colors border border-green-500/30 shadow-lg"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8l-8-8-8 8" />
+                  </svg>
+                  Receive
+                </button>
+                <button
+                  onClick={openSendModal}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/30 hover:bg-blue-500/40 text-blue-200 font-semibold rounded-lg transition-colors border border-blue-500/30 shadow-lg"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 20v-16m-8 8l8 8 8-8" />
+                  </svg>
+                  Send
+                </button>
+              </div>
               <button
                 onClick={handleViewAllAssets}
-                className="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg"
+                className="w-full px-4 py-2 bg-white/10 hover:bg-white/15 text-white/80 font-medium rounded-lg transition-colors border border-white/20"
               >
                 View All Assets
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="w-full px-4 py-2 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg transition-colors border border-white/30"
-              >
-                Close
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Send Modal */}
+      <SendModal
+        isOpen={isSendModalOpen}
+        onClose={() => setIsSendModalOpen(false)}
+        walletAddress={walletAddress}
+        usdcBalance={usdcBalance}
+        onSuccess={handleSendSuccess}
+      />
+
+      {/* Receive Modal */}
+      <ReceiveModal
+        isOpen={isReceiveModalOpen}
+        onClose={() => setIsReceiveModalOpen(false)}
+        walletAddress={walletAddress}
+      />
     </div>
   );
 }

@@ -1,0 +1,33 @@
+{
+  "css.validate": false,
+  "less.validate": false,
+  "scss.validate": false,
+  "css.lint.unknownAtRules": "ignore",
+  "css.lint.validProperties": [],
+  "css.customData": [],
+  "css.lint.unknownProperties": "ignore",
+  "css.lint.propertyIgnoredDueToDisplay": "ignore",
+  "css.lint.duplicateProperties": "ignore",
+  "tailwindCSS.includeLanguages": {
+    "css": "css",
+    "html": "html",
+    "javascript": "javascript",
+    "typescript": "typescript",
+    "javascriptreact": "javascript",
+    "typescriptreact": "typescript"
+  },
+  "tailwindCSS.experimental.classRegex": [
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+  ],
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact",
+    "typescript": "typescriptreact"
+  },
+  "editor.quickSuggestions": {
+    "strings": true
+  }
+}

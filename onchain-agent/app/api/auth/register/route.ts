@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/database';
 import User from '@/lib/models/User';
+import { logAuthEvent } from '@/lib/activity-logger';
+import { rateLimiters } from '@/lib/rate-limiter';
 
 export async function POST(request: NextRequest) {
   try {
+    // Apply rate limiting - 20 registrations per minute
+    const rateLimitResponse = rateLimiters.strict(request);
+    if (rateLimitResponse) return rateLimitResponse;
+
     // Connect to database
     await connectDB();
 
@@ -56,6 +62,22 @@ export async function POST(request: NextRequest) {
 
         await user.save();
 
+        // Log registration activity
+        try {
+          const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+          const userAgent = request.headers.get('user-agent') || 'unknown';
+          
+          await logAuthEvent(
+            user._id.toString(),
+            'user_registered',
+            { method: 'email', email },
+            ipAddress,
+            userAgent
+          );
+        } catch (logError) {
+          console.error('Error logging registration:', logError);
+        }
+
         return NextResponse.json({
           success: true,
           message: 'User registered successfully',
@@ -98,6 +120,22 @@ export async function POST(request: NextRequest) {
         });
 
         await user.save();
+
+        // Log registration activity
+        try {
+          const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+          const userAgent = request.headers.get('user-agent') || 'unknown';
+          
+          await logAuthEvent(
+            user._id.toString(),
+            'user_registered',
+            { method: 'phone', phone },
+            ipAddress,
+            userAgent
+          );
+        } catch (logError) {
+          console.error('Error logging registration:', logError);
+        }
 
         return NextResponse.json({
           success: true,

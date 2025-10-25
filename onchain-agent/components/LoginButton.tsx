@@ -14,6 +14,19 @@ export default function LoginButton() {
     network: string;
   } | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Handle logout with immediate feedback
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Force reload as fallback
+      window.location.href = '/';
+    }
+  };
 
   // Fetch wallet information when user is authenticated
   useEffect(() => {
@@ -150,10 +163,23 @@ export default function LoginButton() {
         )}
         
         <button
-          onClick={logout}
-          className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition-colors"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className={`px-4 py-2 text-white text-sm rounded-lg transition-all duration-200 touch-manipulation active:scale-95 ${
+            isLoggingOut
+              ? 'bg-gray-500/20 cursor-wait opacity-70'
+              : 'bg-white/10 hover:bg-white/20 active:bg-white/30'
+          }`}
+          title={isLoggingOut ? "Signing out..." : "Sign Out"}
         >
-          Sign Out
+          {isLoggingOut ? (
+            <span className="flex items-center gap-2">
+              <span className="animate-spin">⏳</span>
+              <span>Signing out...</span>
+            </span>
+          ) : (
+            'Sign Out'
+          )}
         </button>
       </div>
 

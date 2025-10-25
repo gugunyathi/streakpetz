@@ -34,7 +34,7 @@ const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
   const [copySuccess, setCopySuccess] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
 
-  const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
+  const [sendingInvites, setSendingInvites] = useState<string[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [friendsError, setFriendsError] = useState('');
 
@@ -173,7 +173,7 @@ const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
   const sendXMTPInvitation = async (friend: Friend) => {
     if (!onSendXMTPInvite) return;
 
-    setSendingInvites(prev => new Set(prev).add(friend.id));
+    setSendingInvites(prev => [...prev, friend.id]);
 
     try {
       const message = `Hey! I'd love to share my StreakPet journey with you. Join me at ${inviteLink} and let's grow our pets together! 🐾`;
@@ -199,11 +199,7 @@ const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
     } catch (error) {
       console.error('Error sending XMTP invitation:', error);
     } finally {
-      setSendingInvites(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(friend.id);
-        return newSet;
-      });
+      setSendingInvites(prev => prev.filter(id => id !== friend.id));
     }
   };
 
@@ -248,14 +244,14 @@ const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100001] flex items-start justify-center p-2 sm:p-4 pt-2 sm:pt-4"
         onClick={onClose}
       >
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] overflow-hidden mt-0"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -405,7 +401,7 @@ const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
                                 onClick={() => sendXMTPInvitation(friend)}
-                                disabled={sendingInvites.has(friend.id)}
+                                disabled={sendingInvites.includes(friend.id)}
                                 className="p-2 text-purple-600 hover:bg-purple-100 rounded-full transition-colors disabled:opacity-50"
                               >
                                 <MessageCircle size={16} />

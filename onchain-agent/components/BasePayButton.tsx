@@ -5,11 +5,14 @@ import { motion } from 'framer-motion';
 import { executeGasFreePayment, getWalletUSDCBalance } from '@/lib/wallet';
 import { CreditCard, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
+// IMPORTANT: This application is configured to use Base Sepolia (Chain ID: 84532) ONLY
+// All payment operations are locked to testnet for safety
+
 interface BasePayButtonProps {
   amount: number; // Amount in USDC cents
   walletAddress: string; // User wallet address for payment
   recipientAddress?: string; // Recipient wallet address (defaults to store wallet)
-  network?: 'base-mainnet' | 'base-sepolia'; // Network for the transaction
+  network?: 'base-mainnet' | 'base-sepolia'; // Network parameter (ignored - always uses base-sepolia)
   onPaymentSuccess: (paymentId: string) => void;
   onPaymentError: (error: string) => void;
   className?: string;
@@ -18,32 +21,27 @@ interface BasePayButtonProps {
 }
 
 // Chain ID validation constants
+// Default Chain: Base Sepolia Testnet (84532)
 const CHAIN_IDS = {
   'base-mainnet': 8453,
-  'base-sepolia': 84532
+  'base-sepolia': 84532 // ✅ DEFAULT - All payments use this chain
 } as const;
 
-// Validate network and prevent mainnet usage in development
-function validatePaymentNetwork(network: 'base-mainnet' | 'base-sepolia'): void {
-  // Force Base Sepolia in development/testing environments
-  if (process.env.NODE_ENV !== 'production' && network === 'base-mainnet') {
-    console.warn('⚠️  Mainnet payment blocked in development. Forcing Base Sepolia testnet.');
-    throw new Error('Mainnet payments are not allowed in development environment. Use base-sepolia instead.');
-  }
-  
-  // Additional validation for production
+// Validate network and force Base Sepolia for all payments
+function validatePaymentNetwork(network: 'base-mainnet' | 'base-sepolia'): 'base-sepolia' {
+  // ALWAYS return base-sepolia regardless of input - safety measure
   if (network === 'base-mainnet') {
-    console.warn('🚨 MAINNET PAYMENT DETECTED - Ensure this is intentional!');
-  } else {
-    console.log('✅ Using Base Sepolia testnet for payments');
+    console.warn('⚠️  Mainnet payment attempted but blocked. Forcing Base Sepolia testnet (Chain ID: 84532)');
   }
+  console.log('✅ Using Base Sepolia testnet (Chain ID: 84532) for payment');
+  return 'base-sepolia';
 }
 
 const BasePayButton: React.FC<BasePayButtonProps> = ({
   amount,
   walletAddress,
   recipientAddress = '0x226710d13E6c16f1c99F34649526bD3bF17cd010', // Store wallet address
-  network = 'base-sepolia',
+  network: _network = 'base-sepolia', // This parameter is now ignored
   onPaymentSuccess,
   onPaymentError,
   className = '',
@@ -60,12 +58,13 @@ const BasePayButton: React.FC<BasePayButtonProps> = ({
     setPaymentStatus('processing');
 
     try {
-      // Validate network before proceeding with payment
-      validatePaymentNetwork(network);
+      // FORCE Base Sepolia (Chain ID: 84532) for all payments
+      const network = validatePaymentNetwork(_network);
       
       // Log network and chain ID for debugging
       const expectedChainId = CHAIN_IDS[network];
-      console.log(`🔗 Payment network: ${network} (Expected Chain ID: ${expectedChainId})`);
+      console.log(`🔗 Payment locked to Base Sepolia testnet (Chain ID: ${expectedChainId})`);
+
       
       // Validate wallet address
       if (!walletAddress || !walletAddress.startsWith('0x') || walletAddress.length !== 42) {
@@ -104,6 +103,43 @@ const BasePayButton: React.FC<BasePayButtonProps> = ({
       
       if (!paymentResult.success) {
         console.error('Payment execution failed:', paymentResult.error);
+        console.error('Payment error code:', paymentResult.code);
+        
+        // Check if error is related to missing wallet data
+        if (paymentResult.code === 'WALLET_NEEDS_REPAIR' ||
+            paymentResult.error?.includes('wallet needs to be reinitialized') || 
+            paymentResult.error?.includes('Wallet data not found')) {
+          // Attempt to repair the wallet automatically
+          console.log('Attempting automatic wallet repair for address:', walletAddress);
+          setPaymentStatus('processing');
+          
+          try {
+            const repairResponse = await fetch('/api/wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'repairWallet',
+                walletAddress
+              })
+            });
+            
+            const repairResult = await repairResponse.json();
+            
+            if (repairResult.success) {
+              console.log('✅ Wallet repaired successfully. User should retry payment.');
+              setPaymentStatus('idle');
+              setIsProcessing(false);
+              throw new Error('Wallet repaired successfully! Please click Buy again to complete your purchase.');
+            } else {
+              console.error('Wallet repair failed:', repairResult.error);
+              throw new Error('Unable to repair wallet automatically. Please click the "Reconnect Wallet" button at the top of the store.');
+            }
+          } catch (repairError) {
+            console.error('Wallet repair attempt failed:', repairError);
+            throw repairError instanceof Error ? repairError : new Error('Wallet repair failed. Please use the Reconnect Wallet button.');
+          }
+        }
+        
         throw new Error(paymentResult.error || 'Payment failed');
       }
       

@@ -9,6 +9,7 @@ export interface IWallet extends Document {
   ownerId: string; // Reference to User ID
   petId?: string; // Reference to Pet ID (if pet wallet)
   basename?: string; // Registered basename (e.g., mypet.base.eth)
+  walletData?: string; // Exported wallet data (JSON string) for persistence
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +77,12 @@ const WalletSchema = new Schema<IWallet>({
       },
       message: 'Invalid basename format. Must end with .base.eth or .basetest.eth'
     }
+  },
+  walletData: {
+    type: String,
+    required: false,
+    // Store exported wallet data as JSON string for wallet import
+    // This allows us to reconstruct the wallet without relying on Wallet.fetch()
   },
   isActive: {
     type: Boolean,

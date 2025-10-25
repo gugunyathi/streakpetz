@@ -2,20 +2,33 @@
 import { createPublicClient, createWalletClient, http, parseAbi, WalletClient, encodeFunctionData } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 
-// Paymaster & Bundler endpoint provided by Coinbase
-export const PAYMASTER_ENDPOINT = 'https://api.developer.coinbase.com/rpc/v1/base/hPe1vPn9H3lkH0Cr8YT4WDgQEsuW17Hy';
+// IMPORTANT: This application is configured to use Base Sepolia (Chain ID: 84532) ONLY
+// Mainnet functionality is disabled for safety
+
+// Paymaster & Bundler endpoint provided by Coinbase - Base Sepolia Testnet
+// Endpoint URL confirms this is Base Sepolia (contains /base-sepolia/ in path)
+export const PAYMASTER_ENDPOINT = process.env.PAYMASTER_ENDPOINT || 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/hPe1vPn9H3lkH0Cr8YT4WDgQEsuW17Hy';
+export const BUNDLER_ENDPOINT = process.env.BUNDLER_ENDPOINT || 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/hPe1vPn9H3lkH0Cr8YT4WDgQEsuW17Hy';
+
+// EntryPoint contract address (ERC-4337 standard)
+export const ENTRYPOINT_ADDRESS = '0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789';
 
 // USDC contract addresses on Base networks
 export const USDC_ADDRESSES = {
   'base-mainnet': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+  'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // Default for all operations
 } as const;
 
 // Chain ID validation constants
+// Default Chain: Base Sepolia Testnet (84532)
 export const CHAIN_IDS = {
   'base-mainnet': 8453,
-  'base-sepolia': 84532
+  'base-sepolia': 84532 // ✅ DEFAULT - All operations use this chain
 } as const;
+
+// Default network for the entire application
+export const DEFAULT_NETWORK = 'base-sepolia';
+export const DEFAULT_CHAIN_ID = 84532;
 
 // ERC-20 ABI for USDC transfers (enhanced for proxy contracts)
 export const ERC20_ABI = parseAbi([
@@ -47,18 +60,13 @@ export interface PaymasterTransaction {
 
 // Validate network and prevent mainnet usage in development
 export function validateNetwork(network: 'base-mainnet' | 'base-sepolia'): void {
-  // Force Base Sepolia in development/testing environments
-  if (process.env.NODE_ENV !== 'production' && network === 'base-mainnet') {
-    console.warn('⚠️  Mainnet usage blocked in development. Forcing Base Sepolia testnet.');
-    throw new Error('Mainnet payments are not allowed in development environment. Use base-sepolia instead.');
+  // FORCE Base Sepolia for all environments - mainnet is blocked
+  if (network === 'base-mainnet') {
+    console.error('🚨 MAINNET BLOCKED - This application only supports Base Sepolia testnet');
+    throw new Error('Mainnet is not supported. All operations must use base-sepolia (Chain ID: 84532)');
   }
   
-  // Additional validation for production
-  if (network === 'base-mainnet') {
-    console.warn('🚨 MAINNET PAYMENT DETECTED - Ensure this is intentional!');
-  } else {
-    console.log('✅ Using Base Sepolia testnet for payments');
-  }
+  console.log('✅ Using Base Sepolia testnet (Chain ID: 84532) for all operations');
 }
 
 // Get paymaster configuration based on network
@@ -249,4 +257,205 @@ export function usdcCentsToWei(cents: number): bigint {
 // Convert USDC wei to cents
 export function usdcWeiToCents(wei: bigint): number {
   return Number(wei / BigInt(10000));
+}
+
+// UserOperation interface for ERC-4337
+export interface UserOperation {
+  sender: string;
+  nonce: string;
+  initCode: string;
+  callData: string;
+  callGasLimit: string;
+  verificationGasLimit: string;
+  preVerificationGas: string;
+  maxFeePerGas: string;
+  maxPriorityFeePerGas: string;
+  paymasterAndData: string;
+  signature: string;
+}
+
+// Paymaster stub data response
+export interface PaymasterStubDataResponse {
+  paymasterAndData: string;
+  preVerificationGas: string;
+  verificationGasLimit: string;
+  callGasLimit: string;
+}
+
+/**
+ * Get paymaster stub data for gas-free transactions
+ * This implements the Coinbase Paymaster API for ERC-4337 UserOperations
+ * 
+ * @param userOp - The UserOperation object
+ * @param entryPoint - EntryPoint contract address (default: 0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789)
+ * @param chainId - Chain ID in hex format (default: 0x14a34 for Base Sepolia 84532)
+ * @param context - Additional context (optional)
+ * @returns PaymasterStubDataResponse with gas sponsorship data
+ */
+export async function getPaymasterStubData(
+  userOp: UserOperation,
+  entryPoint: string = ENTRYPOINT_ADDRESS,
+  chainId: string = '0x14a34', // Base Sepolia chain ID (84532 in hex)
+  context: Record<string, any> = {}
+): Promise<PaymasterStubDataResponse> {
+  try {
+    console.log('🎯 Requesting paymaster stub data...');
+    console.log('UserOp sender:', userOp.sender);
+    console.log('EntryPoint:', entryPoint);
+    console.log('Chain ID:', chainId);
+
+    const response = await fetch(PAYMASTER_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'pm_getPaymasterStubData',
+        params: [
+          userOp,
+          entryPoint,
+          chainId,
+          context
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Paymaster request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error('Paymaster error:', data.error);
+      throw new Error(`Paymaster error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    console.log('✅ Paymaster stub data received');
+    console.log('Response:', JSON.stringify(data, null, 2));
+    console.log('Paymaster data:', data.result.paymasterAndData);
+    console.log('Verification gas limit:', data.result.verificationGasLimit);
+    console.log('Call gas limit:', data.result.callGasLimit);
+    console.log('Pre-verification gas:', data.result.preVerificationGas);
+    
+    return data.result as PaymasterStubDataResponse;
+
+  } catch (error) {
+    console.error('Failed to get paymaster stub data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a UserOperation for USDC transfer with gas sponsorship
+ * 
+ * @param sender - Smart wallet address sending USDC
+ * @param recipient - Address receiving USDC
+ * @param amount - Amount in USDC wei (6 decimals)
+ * @param nonce - Wallet nonce
+ * @returns UserOperation ready for paymaster processing
+ */
+export async function createUSDCTransferUserOp(
+  sender: string,
+  recipient: string,
+  amount: bigint,
+  nonce: string = '0x0'
+): Promise<UserOperation> {
+  // Encode USDC transfer call data
+  const transferData = encodeFunctionData({
+    abi: ERC20_ABI,
+    functionName: 'transfer',
+    args: [recipient as `0x${string}`, amount],
+  });
+
+  // Create the UserOperation
+  const userOp: UserOperation = {
+    sender,
+    nonce,
+    initCode: '0x', // No init code for existing wallets
+    callData: transferData,
+    callGasLimit: '0x0', // Will be filled by paymaster
+    verificationGasLimit: '0x0', // Will be filled by paymaster
+    preVerificationGas: '0x0', // Will be filled by paymaster
+    maxFeePerGas: '0x0', // Gas-free transaction
+    maxPriorityFeePerGas: '0x0', // Gas-free transaction
+    paymasterAndData: '0x', // Will be filled by paymaster
+    signature: '0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000041fffffffffffffffffffffffffffffff0000000000000000000000000000000007aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1c00000000000000000000000000000000000000000000000000000000000000' // Placeholder signature
+  };
+
+  console.log('📝 Created UserOperation for USDC transfer');
+  console.log('Sender:', sender);
+  console.log('Recipient:', recipient);
+  console.log('Amount:', amount.toString());
+
+  return userOp;
+}
+
+/**
+ * Execute gas-free USDC transfer using Coinbase Paymaster
+ * 
+ * @param sender - Smart wallet address sending USDC
+ * @param recipient - Address receiving USDC  
+ * @param amount - Amount in USDC wei (6 decimals)
+ * @param network - Network to use (default: base-sepolia)
+ * @returns Transaction hash
+ */
+export async function executeGasFreeUSDCTransferWithPaymaster(
+  sender: string,
+  recipient: string,
+  amount: bigint,
+  network: 'base-mainnet' | 'base-sepolia' = 'base-sepolia'
+): Promise<string> {
+  try {
+    validateNetwork(network);
+    
+    console.log('🚀 Starting gas-free USDC transfer with paymaster...');
+    
+    // Step 1: Create UserOperation
+    const userOp = await createUSDCTransferUserOp(sender, recipient, amount);
+    
+    // Step 2: Get paymaster stub data (gas sponsorship)
+    const paymasterData = await getPaymasterStubData(userOp);
+    
+    // Step 3: Update UserOperation with paymaster data
+    userOp.paymasterAndData = paymasterData.paymasterAndData;
+    userOp.preVerificationGas = paymasterData.preVerificationGas;
+    userOp.verificationGasLimit = paymasterData.verificationGasLimit;
+    userOp.callGasLimit = paymasterData.callGasLimit;
+    
+    console.log('✅ UserOperation prepared with paymaster sponsorship');
+    console.log('Paymaster data:', paymasterData.paymasterAndData.slice(0, 20) + '...');
+    
+    // Step 4: Send UserOperation to bundler
+    const response = await fetch(BUNDLER_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_sendUserOperation',
+        params: [userOp, ENTRYPOINT_ADDRESS]
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(`Bundler error: ${result.error.message || JSON.stringify(result.error)}`);
+    }
+    
+    const userOpHash = result.result;
+    console.log('🎉 Gas-free transaction submitted!');
+    console.log('UserOperation hash:', userOpHash);
+    
+    return userOpHash;
+    
+  } catch (error) {
+    console.error('Gas-free USDC transfer failed:', error);
+    throw error;
+  }
 }

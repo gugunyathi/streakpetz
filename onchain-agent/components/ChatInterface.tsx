@@ -2,16 +2,21 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Pet } from '../lib/pet';
-import { generateAIResponse } from '../lib/openai';
 import InviteFriendsModal from './InviteFriendsModal';
 import { ApiService, Friend } from '@/lib/api';
 
 interface Message {
   id: string;
+  _id?: string;
   content: string;
   text?: string; // For backward compatibility
   sender: 'user' | 'pet' | 'system';
   timestamp: Date;
+  metadata?: {
+    mood?: string;
+    xpGained?: number;
+  };
+  isRead?: boolean;
 }
 
 interface ChatInterfaceProps {
@@ -22,6 +27,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'friends' | 'settings'>('chat');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -39,16 +45,70 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize with a welcome message
+  // Load chat history on mount
   useEffect(() => {
-    const welcomeMessage: Message = {
-      id: 'welcome',
-      content: `Hi! I'm ${pet.name}! How are you doing today?`,
-      sender: 'pet',
-      timestamp: new Date()
-    };
-    setMessages([welcomeMessage]);
-  }, [pet.name]);
+    loadChatHistory();
+  }, [pet.id]);
+
+  // Load chat history from API
+  const loadChatHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      // Get userId from localStorage or session
+      const userId = localStorage.getItem('userId') || pet.petWalletAddress;
+      if (!userId || !pet.id) {
+        // Initialize with welcome message if no history
+        const welcomeMessage: Message = {
+          id: 'welcome',
+          content: `Hi! I'm ${pet.name}! How are you doing today?`,
+          sender: 'pet',
+          timestamp: new Date()
+        };
+        setMessages([welcomeMessage]);
+        setIsLoadingHistory(false);
+        return;
+      }
+
+      const response = await fetch(
+        `/api/chats?userId=${userId}&petId=${pet.id}&limit=50`
+      );
+      const data = await response.json();
+
+      if (data.success && data.messages && data.messages.length > 0) {
+        const loadedMessages = data.messages.map((msg: any) => ({
+          id: msg._id,
+          _id: msg._id,
+          content: msg.content,
+          sender: msg.sender,
+          timestamp: new Date(msg.timestamp),
+          metadata: msg.metadata,
+          isRead: msg.isRead
+        }));
+        setMessages(loadedMessages);
+      } else {
+        // Initialize with welcome message if no history
+        const welcomeMessage: Message = {
+          id: 'welcome',
+          content: `Hi! I'm ${pet.name}! How are you doing today?`,
+          sender: 'pet',
+          timestamp: new Date()
+        };
+        setMessages([welcomeMessage]);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      // Initialize with welcome message on error
+      const welcomeMessage: Message = {
+        id: 'welcome',
+        content: `Hi! I'm ${pet.name}! How are you doing today?`,
+        sender: 'pet',
+        timestamp: new Date()
+      };
+      setMessages([welcomeMessage]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   // Load friends when component mounts
   useEffect(() => {
@@ -243,6 +303,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = newMessage;
     setNewMessage('');
     setIsLoading(true);
 
@@ -254,7 +315,54 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
     }, 0);
 
     try {
-      const aiResponse = await generateAIResponse(newMessage, pet);
+      // Get userId from localStorage or session
+      const userId = localStorage.getItem('userId') || pet.petWalletAddress;
+      
+      // Save user message to database
+      if (userId && pet.id) {
+        try {
+          await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              petId: pet.id,
+              sender: 'user',
+              content: messageToSend,
+              metadata: {}
+            })
+          });
+        } catch (dbError) {
+          console.error('Error saving user message to database:', dbError);
+        }
+      }
+
+      // Generate AI response via API route (secure - keeps API key on server)
+      let aiResponse = '';
+      try {
+        const response = await fetch('/api/agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userMessage: messageToSend,
+            petId: pet.id,
+            petStage: pet.stage,
+            petStats: pet.stats
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        aiResponse = data.response || "I'm here for you! 🐾";
+      } catch (apiError) {
+        console.error('Error getting AI response:', apiError);
+        // Fallback response if API fails
+        aiResponse = `*${pet.name} nuzzles you* I'm having trouble thinking right now, but I'm always here with you! 💕`;
+      }
+      
       const petMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: aiResponse,
@@ -262,6 +370,28 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, petMessage]);
+
+      // Save pet message to database
+      if (userId && pet.id) {
+        try {
+          await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              petId: pet.id,
+              sender: 'pet',
+              content: aiResponse,
+              metadata: {
+                mood: pet.mood,
+                xpGained: 0
+              }
+            })
+          });
+        } catch (dbError) {
+          console.error('Error saving pet message to database:', dbError);
+        }
+      }
     } catch (error) {
       console.error('Failed to generate AI response:', error);
       const errorMessage: Message = {
@@ -305,12 +435,14 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
   );
 
   const renderChatContent = () => (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div 
         className="flex-1 overflow-y-auto space-y-2 sm:space-y-3 mb-3 sm:mb-4 pr-1"
         style={{
           scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent'
+          scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent',
+          maxHeight: 'calc(100% - 80px)', // Height relative to container minus input area
+          minHeight: '120px' // Ensure minimum scrollable area
         }}
       >
         <style jsx>{`
@@ -328,25 +460,39 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
             background: rgba(255, 255, 255, 0.5);
           }
         `}</style>
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] sm:max-w-[80%] p-2 sm:p-3 rounded-2xl ${
-                message.sender === 'user'
-                  ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
-                  : 'bg-white/10 text-white'
-              }`}
-            >
-              <p className="text-xs">{message.content || message.text}</p>
-              <p className="text-xs opacity-60 mt-1">
-                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
+        {isLoadingHistory ? (
+          <div className="flex justify-center items-center h-full">
+            <div className="bg-white/10 text-white p-3 rounded-2xl">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
             </div>
           </div>
-        ))}
+        ) : (
+          <>
+            {messages.map((message) => (
+              <div
+                key={message.id || message._id}
+                className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] sm:max-w-[80%] p-2 sm:p-3 rounded-2xl ${
+                    message.sender === 'user'
+                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
+                      : 'bg-white/10 text-white'
+                  }`}
+                >
+                  <p className="text-xs break-words">{message.content || message.text}</p>
+                  <p className="text-xs opacity-60 mt-1">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-white/10 text-white p-2 sm:p-3 rounded-2xl">
@@ -404,13 +550,13 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
     // If a friend is selected, show individual chat
     if (selectedFriend) {
       return (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Friend Chat Header */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setSelectedFriend(null)}
-                className="text-white/60 hover:text-white transition-colors"
+                className="text-white/60 hover:text-white transition-colors text-[11px]"
               >
                 ← Back
               </button>
@@ -418,7 +564,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
                 selectedFriend.xmtpAvailable ? 'bg-green-400' : 'bg-gray-400'
               }`} />
               <div>
-                <h3 className="text-white font-bold text-sm">
+                <h3 className="text-white font-bold text-[11px]">
                   {selectedFriend.name || `${selectedFriend.address.slice(0, 6)}...${selectedFriend.address.slice(-4)}`}
                 </h3>
                 <p className="text-white/60 text-xs">
@@ -433,9 +579,26 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
             className="flex-1 overflow-y-auto space-y-2 mb-3 pr-1"
             style={{
               scrollbarWidth: 'thin',
-              scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent'
+              scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent',
+              maxHeight: 'calc(100% - 100px)', // Height relative to container minus header and input area
+              minHeight: '100px' // Ensure minimum scrollable area
             }}
           >
+            <style jsx>{`
+              div::-webkit-scrollbar {
+                width: 6px;
+              }
+              div::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              div::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.3);
+                border-radius: 3px;
+              }
+              div::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.5);
+              }
+            `}</style>
             {(friendMessages[selectedFriend.id] || []).map((message) => (
               <div
                 key={message.id}
@@ -450,7 +613,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
                       : 'bg-white/10 text-white'
                   }`}
                 >
-                  <p className="text-xs">{message.text || message.content}</p>
+                  <p className="text-xs break-words">{message.text || message.content}</p>
                   <p className="text-xs opacity-60 mt-1">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -496,9 +659,9 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
 
     // Default friends list view
     return (
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header with Invite Button */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="flex items-center space-x-2">
             <div className="text-2xl">👥</div>
             <div>
@@ -516,10 +679,12 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
 
         {/* Friends List */}
         <div 
-          className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-40 sm:max-h-48"
+          className="flex-1 overflow-y-auto space-y-2 pr-1"
           style={{
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent'
+            scrollbarColor: 'rgba(255, 255, 255, 0.3) transparent',
+            maxHeight: 'calc(100% - 60px)', // Height relative to container minus header
+            minHeight: '120px' // Ensure minimum scrollable area
           }}
         >
           <style jsx>{`
@@ -603,7 +768,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="bg-black/20 backdrop-blur-xl rounded-3xl border border-white/10 p-3 sm:p-4 h-64 sm:h-80 flex flex-col">
+    <div className="bg-black/20 backdrop-blur-xl rounded-3xl border border-white/10 p-3 sm:p-4 h-[257px] sm:h-[322px] flex flex-col">
       <Navigation />
       {renderContent()}
       

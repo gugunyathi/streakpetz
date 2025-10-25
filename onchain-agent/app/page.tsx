@@ -6,7 +6,7 @@ import { Pet, updatePetAfterInteraction } from '@/lib/pet';
 import PetDisplay from '@/components/PetDisplay';
 import LoginButton from '@/components/LoginButton';
 import PetStoreModal from '@/components/PetStoreModal';
-import { generateActionResponse } from '@/lib/openai';
+import { useAutoEvolution } from '@/app/hooks/useAutoEvolution';
 
 export default function Home() {
   const { ready, authenticated, user, walletAddress, setUserWalletAddress } = useAuth();
@@ -14,6 +14,28 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+
+  // Auto-evolution hook - checks and applies evolution automatically
+  useAutoEvolution({
+    pet,
+    userWalletAddress: walletAddress || null,
+    enabled: authenticated && !!pet,
+    onEvolutionDetected: (result) => {
+      // Update pet state when evolution is detected
+      if (result.pet) {
+        setPet((currentPet) => {
+          if (!currentPet) return currentPet;
+          return {
+            ...currentPet,
+            stage: result.pet.stage,
+            mood: result.pet.mood,
+            xp: result.pet.xp,
+            stats: result.pet.stats
+          };
+        });
+      }
+    }
+  });
 
   // Initialize user and pet when authenticated
   useEffect(() => {
@@ -30,7 +52,11 @@ export default function Home() {
           const response = await fetch('/api/wallet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'createUserWallet', userId: user.id }),
+            body: JSON.stringify({ 
+              action: 'createUserWallet', 
+              userId: user.id,
+              network: 'base-sepolia' // Force testnet
+            }),
           });
           const data = await response.json();
           if (data.success) {
@@ -61,6 +87,10 @@ export default function Home() {
           if (existingPetData.success && existingPetData.pets && existingPetData.pets.length > 0) {
             // User has existing pets - use the first active one
             pet = existingPetData.pets[0];
+            // Ensure pet.id is a string (handle MongoDB ObjectId)
+            if (pet.id && typeof pet.id !== 'string') {
+              pet.id = pet.id.toString();
+            }
             console.log('Found existing pet:', pet.name, 'with XP:', pet.xp, 'Pet ID:', pet.id);
             console.log('Pet wallet info - Address:', pet.petWalletAddress, 'ID:', pet.petWalletId);
           } else {
@@ -89,6 +119,10 @@ export default function Home() {
             console.log('Pet creation response:', petData);
             if (petData.success) {
               pet = petData.pet;
+              // Ensure pet.id is a string (handle MongoDB ObjectId)
+              if (pet.id && typeof pet.id !== 'string') {
+                pet.id = pet.id.toString();
+              }
               console.log('Pet from API response:', pet.name, 'Pet ID:', pet.id);
             } else {
               throw new Error(petData.error);
@@ -125,7 +159,8 @@ export default function Home() {
               body: JSON.stringify({ 
                 action: 'createPetWallet', 
                 petId: pet.id,
-                userId: user.id
+                userId: user.id,
+                network: 'base-sepolia' // Force testnet
               }),
             });
             
@@ -135,13 +170,13 @@ export default function Home() {
             
             const data = await response.json();
             if (data.success) {
-              // Handle both existing wallet (data.wallet) and new wallet (data.address) response structures
-              petWallet = data.wallet || {
+              // Use the correct response structure from the API
+              petWallet = {
                 id: data.walletId,
                 address: data.address,
-                network: data.network
+                network: data.network || 'base-sepolia'
               };
-              console.log('Pet wallet created:', petWallet.address);
+              console.log('Pet wallet created:', petWallet.address, 'ID:', petWallet.id);
             } else {
               throw new Error(data.error);
             }
@@ -231,13 +266,8 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      // Generate AI response for feeding
-      try {
-        const response = await generateActionResponse('feed', data.pet || pet);
-        console.log('Pet response:', response);
-      } catch (aiError) {
-        console.error('AI response failed:', aiError);
-      }
+      // AI response logging removed - OpenAI only called from API routes for security
+      console.log('Pet fed successfully');
     } catch (error) {
       console.error('Failed to feed pet:', error);
       // Fallback to local update
@@ -270,13 +300,8 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      // Generate AI response for playing
-      try {
-        const response = await generateActionResponse('play', data.pet || pet);
-        console.log('Pet response:', response);
-      } catch (aiError) {
-        console.error('AI response failed:', aiError);
-      }
+      // AI response logging removed - OpenAI only called from API routes for security
+      console.log('Pet played successfully');
     } catch (error) {
       console.error('Failed to play with pet:', error);
       // Fallback to local update
@@ -309,13 +334,8 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      // Generate AI response for resting
-      try {
-        const response = await generateActionResponse('rest', data.pet || pet);
-        console.log('Pet response:', response);
-      } catch (aiError) {
-        console.error('AI response failed:', aiError);
-      }
+      // AI response logging removed - OpenAI only called from API routes for security
+      console.log('Pet groomed successfully');
     } catch (error) {
       console.error('Failed to rest pet:', error);
       // Fallback to local update
@@ -340,10 +360,10 @@ export default function Home() {
   // Loading screen
   if (!ready || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading StreakPets...</p>
+      <div className="min-h-screen flex items-center justify-center safe-top safe-bottom">
+        <div className="text-center p-4">
+          <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white text-base sm:text-lg">Loading StreakPets...</p>
         </div>
       </div>
     );
@@ -352,57 +372,57 @@ export default function Home() {
   // Authentication screen
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-black/20 backdrop-blur-xl rounded-3xl border border-white/10 p-8 max-w-lg w-full text-center">
-          <div className="text-6xl mb-6">🐾</div>
-          <h1 className="text-3xl font-bold text-white mb-4">StreakPets</h1>
-          <p className="text-white/80 mb-8">Your AI-powered digital companion for building lasting habits</p>
+      <div className="min-h-screen flex items-center justify-center p-4 safe-top safe-bottom">
+        <div className="bg-black/20 backdrop-blur-xl rounded-2xl sm:rounded-3xl border border-white/10 p-6 sm:p-8 max-w-lg w-full text-center">
+          <div className="text-5xl sm:text-6xl mb-4 sm:mb-6">🐾</div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3 sm:mb-4">StreakPets</h1>
+          <p className="text-white/80 text-sm sm:text-base mb-6 sm:mb-8">Your AI-powered digital companion for building lasting habits</p>
           
           {/* Features Section */}
-          <div className="mb-8 space-y-4 text-left">
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">🤝</span>
-              <div>
-                <h3 className="text-white font-semibold">Co-raise Pets</h3>
-                <p className="text-white/70 text-sm">Raise digital pets together through chat</p>
+          <div className="mb-6 sm:mb-8 space-y-3 sm:space-y-4 text-left">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <span className="text-xl sm:text-2xl flex-shrink-0">🤝</span>
+              <div className="min-w-0">
+                <h3 className="text-white font-semibold text-sm sm:text-base">Co-raise Pets</h3>
+                <p className="text-white/70 text-xs sm:text-sm truncate">Raise digital pets together through chat</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">💬</span>
-              <div>
-                <h3 className="text-white font-semibold">XMTP Chat</h3>
-                <p className="text-white/70 text-sm">Secure wallet-to-wallet messaging</p>
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <span className="text-xl sm:text-2xl flex-shrink-0">💬</span>
+              <div className="min-w-0">
+                <h3 className="text-white font-semibold text-sm sm:text-base">XMTP Chat</h3>
+                <p className="text-white/70 text-xs sm:text-sm truncate">Secure wallet-to-wallet messaging</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">🤖</span>
-              <div>
-                <h3 className="text-white font-semibold">AI Companions</h3>
-                <p className="text-white/70 text-sm">Pets that grow and learn with you</p>
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <span className="text-xl sm:text-2xl flex-shrink-0">🤖</span>
+              <div className="min-w-0">
+                <h3 className="text-white font-semibold text-sm sm:text-base">AI Companions</h3>
+                <p className="text-white/70 text-xs sm:text-sm truncate">Pets that grow and learn with you</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">❤️</span>
-              <div>
-                <h3 className="text-white font-semibold">Share the Joy</h3>
-                <p className="text-white/70 text-sm">Share the joy of raising digital companions</p>
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <span className="text-xl sm:text-2xl flex-shrink-0">❤️</span>
+              <div className="min-w-0">
+                <h3 className="text-white font-semibold text-sm sm:text-base">Share the Joy</h3>
+                <p className="text-white/70 text-xs sm:text-sm truncate">Share the joy of raising digital companions</p>
               </div>
             </div>
           </div>
           
-          <div className="space-y-4">
-            <p className="text-white/70 text-sm">Sign in to create your pet and start your journey</p>
+          <div className="space-y-3 sm:space-y-4">
+            <p className="text-white/70 text-xs sm:text-sm">Sign in to create your pet and start your journey</p>
             <button
               onClick={() => window.location.href = '/auth/signin'}
-              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-purple-400 hover:to-blue-400 transition-all duration-200 shadow-lg"
+              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 sm:py-3.5 px-6 rounded-xl font-semibold text-sm sm:text-base hover:from-purple-400 hover:to-blue-400 transition-all duration-200 shadow-lg active:scale-98 touch-manipulation"
             >
               Sign In to Get Started
             </button>
           </div>
-          <div className="mt-6 pt-6 border-t border-white/10">
+          <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-white/10">
             <p className="text-white/60 text-xs">
               Sign in with Google or your phone number to create your digital pet companion
             </p>
@@ -413,12 +433,12 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen p-2 sm:p-4">
+    <main className="min-h-screen p-2 sm:p-4 safe-top safe-bottom no-bounce">
       <div className="mx-auto w-full" style={{ maxWidth: '485px' }}>
         {/* Error Display */}
         {error && (
-          <div className="mb-2 p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
-            <p className="text-yellow-200 text-sm">{error}</p>
+          <div className="mb-2 p-2.5 sm:p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+            <p className="text-yellow-200 text-xs sm:text-sm">{error}</p>
           </div>
         )}
 

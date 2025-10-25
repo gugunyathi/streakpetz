@@ -13,6 +13,10 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Mobile optimizations */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 body {
@@ -21,6 +25,24 @@ body {
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: -0.01em;
+  /* Mobile performance */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+  /* Prevent text selection on double-tap */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in inputs and text areas */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Allow text selection in chat messages */
+.message-text {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Typography improvements */
@@ -70,6 +92,35 @@ h1, h2, h3, h4, h5, h6 {
 /* Smooth transitions for all interactive elements */
 button, input, select, textarea {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Better touch targets */
+  min-height: 44px;
+}
+
+/* Touch-friendly button styling */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Input optimizations for mobile */
+input, textarea {
+  font-size: 16px; /* Prevents zoom on iOS */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Remove focus outline on mobile but keep for accessibility */
+@media (hover: none) and (pointer: coarse) {
+  button:focus,
+  input:focus,
+  textarea:focus {
+    outline: none;
+  }
 }
 
 /* Custom scrollbar styling */
@@ -142,6 +193,15 @@ input:focus, button:focus {
   }
 }
 
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .animate-bounce {
   animation: bounce 2s infinite;
 }
@@ -152,4 +212,103 @@ input:focus, button:focus {
 
 .animate-float-up {
   animation: float-up 2s ease-out forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Mobile-specific utility classes */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Safe area padding for notched devices */
+@supports (padding: max(0px)) {
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  
+  .safe-left {
+    padding-left: max(env(safe-area-inset-left), 0px);
+  }
+  
+  .safe-right {
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+}
+
+/* Responsive container */
+.container-mobile {
+  width: 100%;
+  max-width: 485px;
+  margin: 0 auto;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .container-mobile {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* Prevent overscroll bounce on iOS */
+.no-bounce {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hardware acceleration for smooth animations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Optimized scrolling */
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile-optimized text sizing */
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Prevent zoom on input focus (iOS) */
+@media screen and (max-width: 767px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Better touch feedback */
+@media (hover: none) and (pointer: coarse) {
+  .hover-effect:active {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
 }

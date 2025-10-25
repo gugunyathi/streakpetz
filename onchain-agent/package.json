@@ -29,6 +29,7 @@
     "mongoose": "^8.19.1",
     "next": "15.5.3",
     "next-auth": "^4.24.11",
+    "openai": "^6.7.0",
     "react": "^18",
     "react-dom": "^18",
     "react-markdown": "^10.0.0",

@@ -78,13 +78,14 @@ export async function prepareAgentkitAndWalletProvider(): Promise<{
     }
 
     // Initialize WalletProvider: https://docs.cdp.coinbase.com/agentkit/docs/wallet-management
+    // FORCE Base Sepolia (Chain ID: 84532) for all agent wallet operations
     const walletProvider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId: process.env.CDP_API_KEY_ID,
       apiKeySecret: process.env.CDP_API_KEY_SECRET,
       walletSecret: process.env.CDP_WALLET_SECRET,
-      networkId: process.env.NETWORK_ID || "base-sepolia",
+      networkId: "base-sepolia", // Hardcoded to Chain ID 84532
       address: walletDataStr ? JSON.parse(walletDataStr).address : undefined,
-      rpcUrl: process.env.RPC_URL,
+      rpcUrl: process.env.RPC_URL || "https://sepolia.base.org",
     });
 
     // Initialize AgentKit: https://docs.cdp.coinbase.com/agentkit/docs/agent-actions

@@ -22,7 +22,10 @@ export async function createUserWallet(): Promise<WalletInfo> {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action: 'createUserWallet' }),
+        body: JSON.stringify({ 
+          action: 'createUserWallet',
+          network: 'base-sepolia' // Force testnet
+        }),
       });
 
       if (!response.ok) {
@@ -52,7 +55,11 @@ export async function createPetWallet(petId: string): Promise<WalletInfo> {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action: 'createPetWallet', petId }),
+        body: JSON.stringify({ 
+          action: 'createPetWallet', 
+          petId,
+          network: 'base-sepolia' // Force testnet
+        }),
       });
 
       if (!response.ok) {
@@ -210,34 +217,124 @@ export async function executeGasFreePayment(
   toWalletAddress: string,
   amountInCents: number,
   network: 'base-mainnet' | 'base-sepolia' = 'base-sepolia'
-): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
+): Promise<{ success: boolean; transactionHash?: string; error?: string; code?: string }> {
   try {
-    console.log(`Executing gas-free USDC payment: ${amountInCents} cents from ${fromWalletAddress} to ${toWalletAddress}`);
+    console.log(`Executing gas-free USDC payment: ${amountInCents} cents from ${fromWalletAddress} to ${toWalletAddress} on ${network}`);
+    
+    // Validate wallet address format before API call
+    if (!fromWalletAddress || !fromWalletAddress.startsWith('0x') || fromWalletAddress.length !== 42) {
+      return {
+        success: false,
+        error: 'Invalid sender wallet address format. Please reconnect your wallet.'
+      };
+    }
+
+    if (!toWalletAddress || !toWalletAddress.startsWith('0x') || toWalletAddress.length !== 42) {
+      return {
+        success: false,
+        error: 'Invalid recipient wallet address format.'
+      };
+    }
+    
+    // Get the wallet data from database to access the Coinbase SDK wallet
+    const walletCheckResponse = await fetch(`/api/wallet?address=${fromWalletAddress}`);
+    if (!walletCheckResponse.ok) {
+      const errorText = await walletCheckResponse.text();
+      console.error('Wallet check failed:', errorText);
+      return {
+        success: false,
+        error: 'Failed to fetch wallet data. Please ensure your wallet is properly connected and initialized.'
+      };
+    }
+
+    const walletData = await walletCheckResponse.json();
+    if (!walletData.success || !walletData.wallet) {
+      return {
+        success: false,
+        error: 'Wallet not found. Please reconnect your wallet or create a new one.'
+      };
+    }
+
+    // Verify wallet network matches transaction network
+    const walletNetwork = walletData.wallet.network;
+    if (walletNetwork !== network) {
+      console.error(`Wallet network mismatch: wallet is on ${walletNetwork}, transaction is for ${network}`);
+      return {
+        success: false,
+        error: `Network mismatch: Your wallet is on ${walletNetwork}, but this transaction requires ${network}. Please ensure your wallet is on Base Sepolia testnet.`
+      };
+    }
+    console.log(`✅ Wallet network validated: ${walletNetwork}`);
     
     // Convert cents to USDC wei (6 decimals)
     const amountInWei = usdcCentsToWei(amountInCents);
     
-    // Create paymaster wallet client
-    const walletClient = createPaymasterWalletClient(network);
+    // Execute the transfer using server-side API that has access to wallet signing
+    const transferResponse = await fetch('/api/wallet/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fromAddress: fromWalletAddress,
+        toAddress: toWalletAddress,
+        amount: amountInWei.toString(),
+        network
+      })
+    });
+
+    const transferResult = await transferResponse.json();
     
-    // Execute the gas-free transfer
-    const transactionHash = await executeGasFreeUSDCTransfer(
-      walletClient,
-      fromWalletAddress,
-      toWalletAddress,
-      amountInWei,
-      network
-    );
+    if (!transferResult.success) {
+      // Provide more specific error messages
+      const errorMsg = transferResult.error || 'Transfer failed';
+      
+      console.error('Transfer failed with error:', errorMsg);
+      console.error('Error code:', transferResult.code);
+      console.error('Response status:', transferResponse.status);
+      
+      // Check for specific error patterns and provide helpful messages
+      if (transferResult.code === 'WALLET_DATA_MISSING' || errorMsg.includes('Wallet data not found')) {
+        return {
+          success: false,
+          error: 'Your wallet needs to be reinitialized. Please click the "Reconnect Wallet" button at the top of the Pet Store modal.',
+          code: 'WALLET_NEEDS_REPAIR'
+        };
+      }
+      
+      if (errorMsg.includes('Wallet data not found')) {
+        return {
+          success: false,
+          error: 'Your wallet needs to be reinitialized. Please disconnect and reconnect your wallet.'
+        };
+      }
+      if (errorMsg.includes('Wallet data not found')) {
+        return {
+          success: false,
+          error: 'Your wallet needs to be reinitialized. Please disconnect and reconnect your wallet.'
+        };
+      }
+      
+      if (errorMsg.includes('insufficient')) {
+        return {
+          success: false,
+          error: 'Insufficient USDC balance to complete this transaction.'
+        };
+      }
+      
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
     
     return {
       success: true,
-      transactionHash
+      transactionHash: transferResult.transactionHash
     };
   } catch (error) {
     console.error('Gas-free payment failed:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
     };
   }
 }

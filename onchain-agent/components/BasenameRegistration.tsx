@@ -139,7 +139,7 @@ export default function BasenameRegistration({
         )}
 
         <div className="text-white/50 text-xs">
-          <p>• Basename registration requires a small fee</p>
+          <p>• Gas-free registration via Coinbase sponsorship</p>
           <p>• Only lowercase letters, numbers, and hyphens allowed</p>
           <p>• 3-20 characters required</p>
         </div>

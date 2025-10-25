@@ -1,40 +1,66 @@
 import { AgentRequest, AgentResponse } from "@/app/types/api";
 import { NextResponse } from "next/server";
 import { createAgent } from "./create-agent";
+import { generateAIResponse } from "@/lib/openai";
+import { PetMood } from "@/lib/pet";
+
 /**
- * Handles incoming POST requests to interact with the AgentKit-powered AI agent.
- * This function processes user messages and streams responses from the agent.
+ * Handles incoming POST requests to interact with the AI agent.
+ * Can use either AgentKit or direct OpenAI based on the request.
  *
  * @function POST
- * @param {Request & { json: () => Promise<AgentRequest> }} req - The incoming request object containing the user message.
+ * @param {Request & { json: () => Promise<AgentRequest> }} req - The incoming request object containing the user message and pet context.
  * @returns {Promise<NextResponse<AgentResponse>>} JSON response containing the AI-generated reply or an error message.
- *
- * @description Sends a single message to the agent and returns the agents' final response.
- *
- * @example
- * const response = await fetch("/api/agent", {
- *     method: "POST",
- *     headers: { "Content-Type": "application/json" },
- *     body: JSON.stringify({ userMessage: input }),
- * });
  */
 export async function POST(
-  req: Request & { json: () => Promise<AgentRequest> },
+  req: Request & { json: () => Promise<any> },
 ): Promise<NextResponse<AgentResponse>> {
   try {
-    // 1️. Extract user message from the request body
-    const { userMessage } = await req.json();
+    const body = await req.json();
+    const { userMessage, petId, petStage, petStats } = body;
 
-    // 2. Get the agent
+    // If pet context is provided, use our enhanced OpenAI with stage-specific behavior
+    if (petId) {
+      try {
+        // Fetch full pet data from database
+        const pet = await getPetById(petId);
+        
+        if (!pet) {
+          // Use provided pet data as fallback
+          const fallbackPet = {
+            id: petId,
+            name: 'Pet',
+            stage: petStage || 'hatchling',
+            stats: petStats || { health: 100, energy: 100, happiness: 80, level: 1 },
+            xp: 0,
+            mood: PetMood.HAPPY,
+            userWalletAddress: '',
+            streak: 0,
+            lastInteraction: new Date(),
+            createdAt: new Date(),
+            personality: ['friendly', 'playful']
+          };
+          const response = await generateAIResponse(userMessage, fallbackPet as any);
+          return NextResponse.json({ response });
+        }
+
+        // Use full pet data for context-aware response
+        const response = await generateAIResponse(userMessage, pet);
+        return NextResponse.json({ response });
+      } catch (petError) {
+        console.error('Error with pet-specific response:', petError);
+        // Fall through to AgentKit if pet response fails
+      }
+    }
+
+    // Fallback to AgentKit for non-pet conversations
     const agent = await createAgent();
 
-    // 3.Start streaming the agent's response
     const stream = await agent.stream(
-      { messages: [{ content: userMessage, role: "user" }] }, // The new message to send to the agent
-      { configurable: { thread_id: "AgentKit Discussion" } }, // Customizable thread ID for tracking conversations
+      { messages: [{ content: userMessage, role: "user" }] },
+      { configurable: { thread_id: "AgentKit Discussion" } },
     );
 
-    // 4️. Process the streamed response chunks into a single message
     let agentResponse = "";
     for await (const chunk of stream) {
       if ("agent" in chunk) {
@@ -42,7 +68,6 @@ export async function POST(
       }
     }
 
-    // 5️. Return the final response
     return NextResponse.json({ response: agentResponse });
   } catch (error) {
     console.error("Error processing request:", error);
@@ -52,5 +77,18 @@ export async function POST(
           ? error.message
           : "I'm sorry, I encountered an issue processing your message. Please try again later.",
     });
+  }
+}
+
+// Helper function to get pet by ID
+async function getPetById(petId: string): Promise<any> {
+  try {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3001'}/api/pets?petId=${petId}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.success ? data.pet : null;
+  } catch (error) {
+    console.error('Error fetching pet:', error);
+    return null;
   }
 }

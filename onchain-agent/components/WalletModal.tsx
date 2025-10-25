@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
+import SendModal from './SendModal';
+import ReceiveModal from './ReceiveModal';
 
 interface AssetBalance {
   symbol: string;
@@ -23,83 +25,12 @@ export default function WalletModal({ isOpen, onClose, walletAddress }: WalletMo
   const [isLoading, setIsLoading] = useState(false);
   const [totalUsdValue, setTotalUsdValue] = useState('0.00');
   const [error, setError] = useState<string>('');
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<AssetBalance | null>(null);
 
   // Fetch all asset balances when modal opens
   useEffect(() => {
-    const fetchAssetBalances = async () => {
-      if (!isOpen || !walletAddress) return;
-      
-      setIsLoading(true);
-      setError('');
-      
-      try {
-        const response = await fetch('/api/wallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'getAllBalances',
-            walletAddress
-          }),
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          setAssets(data.assets || []);
-          setTotalUsdValue(data.totalUsdValue || '0.00');
-        } else {
-          console.warn('API returned error, using fallback data:', data.error);
-          // Fallback to demo data if API fails
-          setAssets([
-            {
-              symbol: 'ETH',
-              name: 'Ethereum',
-              amount: '0.0234',
-              usdValue: '58.42',
-              icon: '⟠'
-            },
-            {
-              symbol: 'USDC',
-              name: 'USD Coin',
-              amount: '125.50',
-              usdValue: '125.50',
-              icon: '$'
-            },
-            {
-              symbol: 'WETH',
-              name: 'Wrapped Ethereum',
-              amount: '0.0156',
-              usdValue: '38.94',
-              icon: '⟠'
-            }
-          ]);
-          setTotalUsdValue('222.86');
-        }
-      } catch (error) {
-        console.error('Failed to fetch asset balances:', error);
-        setError('Failed to load asset balances. Showing demo data.');
-        // Set demo data on error
-        setAssets([
-          {
-            symbol: 'ETH',
-            name: 'Ethereum',
-            amount: '0.0234',
-            usdValue: '58.42',
-            icon: '⟠'
-          },
-          {
-            symbol: 'USDC',
-            name: 'USD Coin',
-            amount: '125.50',
-            usdValue: '125.50',
-            icon: '$'
-          }
-        ]);
-        setTotalUsdValue('183.92');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchAssetBalances();
   }, [isOpen, walletAddress]);
 
@@ -114,20 +45,105 @@ export default function WalletModal({ isOpen, onClose, walletAddress }: WalletMo
   };
 
   const handleSend = (asset: AssetBalance) => {
-    // TODO: Implement send functionality
-    console.log('Send', asset.symbol);
+    // Only allow sending USDC for now
+    if (asset.symbol === 'USDC') {
+      setSelectedAsset(asset);
+      setIsSendModalOpen(true);
+    } else {
+      alert(`Sending ${asset.symbol} is not yet supported. Only USDC transfers are currently available.`);
+    }
   };
 
   const handleReceive = () => {
-    // TODO: Implement receive functionality (show QR code)
-    console.log('Receive');
+    setIsReceiveModalOpen(true);
+  };
+
+  const handleSendSuccess = () => {
+    // Refresh assets after successful send
+    if (isOpen) {
+      fetchAssetBalances();
+    }
+  };
+
+  const fetchAssetBalances = async () => {
+    if (!isOpen || !walletAddress) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'getAllBalances',
+          walletAddress
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setAssets(data.assets || []);
+        setTotalUsdValue(data.totalUsdValue || '0.00');
+      } else {
+        console.warn('API returned error, using fallback data:', data.error);
+        // Fallback to demo data if API fails
+        setAssets([
+          {
+            symbol: 'ETH',
+            name: 'Ethereum',
+            amount: '0.0234',
+            usdValue: '58.42',
+            icon: '⟠'
+          },
+          {
+            symbol: 'USDC',
+            name: 'USD Coin',
+            amount: '125.50',
+            usdValue: '125.50',
+            icon: '$'
+          },
+          {
+            symbol: 'WETH',
+            name: 'Wrapped Ethereum',
+            amount: '0.0156',
+            usdValue: '38.94',
+            icon: '⟠'
+          }
+        ]);
+        setTotalUsdValue('222.86');
+      }
+    } catch (error) {
+      console.error('Failed to fetch asset balances:', error);
+      setError('Failed to load asset balances. Showing demo data.');
+      // Set demo data on error
+      setAssets([
+        {
+          symbol: 'ETH',
+          name: 'Ethereum',
+          amount: '0.0234',
+          usdValue: '58.42',
+          icon: '⟠'
+        },
+        {
+          symbol: 'USDC',
+          name: 'USD Coin',
+          amount: '125.50',
+          usdValue: '125.50',
+          icon: '$'
+        }
+      ]);
+      setTotalUsdValue('183.92');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 pt-0">
-      <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-white/30 shadow-2xl w-full max-w-md max-h-[100vh] overflow-hidden mt-0">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[100001] p-2 sm:p-4 pt-2 sm:pt-4">
+      <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-white/30 shadow-2xl w-full max-w-md max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] overflow-hidden mt-0">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/20">
           <div className="flex items-center gap-3">
@@ -277,6 +293,27 @@ export default function WalletModal({ isOpen, onClose, walletAddress }: WalletMo
           </div>
         </div>
       </div>
+
+      {/* Send Modal - Only for USDC */}
+      {selectedAsset && selectedAsset.symbol === 'USDC' && (
+        <SendModal
+          isOpen={isSendModalOpen}
+          onClose={() => {
+            setIsSendModalOpen(false);
+            setSelectedAsset(null);
+          }}
+          walletAddress={walletAddress}
+          usdcBalance={selectedAsset.amount}
+          onSuccess={handleSendSuccess}
+        />
+      )}
+
+      {/* Receive Modal */}
+      <ReceiveModal
+        isOpen={isReceiveModalOpen}
+        onClose={() => setIsReceiveModalOpen(false)}
+        walletAddress={walletAddress}
+      />
     </div>
   );
 }

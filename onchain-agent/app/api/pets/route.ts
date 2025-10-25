@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/database';
 import Pet from '@/lib/models/Pet';
 import User from '@/lib/models/User';
+import ActivityLog from '@/lib/models/ActivityLog';
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,6 +83,23 @@ export async function POST(request: NextRequest) {
 
         await pet.save();
 
+        // Log pet creation activity
+        try {
+          await ActivityLog.logActivity(
+            user._id.toString(),
+            'pet_created',
+            'pet',
+            {
+              petId: pet._id.toString(),
+              petName: pet.name,
+              stage: pet.stage
+            },
+            pet._id.toString()
+          );
+        } catch (logError) {
+          console.error('Error logging pet creation:', logError);
+        }
+
         return NextResponse.json({
           success: true,
           message: 'Pet created successfully',
@@ -151,6 +169,22 @@ export async function POST(request: NextRequest) {
 
         await pet.save();
 
+        // Log pet update activity
+        try {
+          await ActivityLog.logActivity(
+            userId,
+            'pet_updated',
+            'pet',
+            {
+              petId: pet._id.toString(),
+              updates: Object.keys(updates)
+            },
+            pet._id.toString()
+          );
+        } catch (logError) {
+          console.error('Error logging pet update:', logError);
+        }
+
         return NextResponse.json({
           success: true,
           message: 'Pet updated successfully',
@@ -200,6 +234,25 @@ export async function POST(request: NextRequest) {
         // Update pet after interaction
         pet.updateAfterInteraction(interactionType);
         await pet.save();
+
+        // Log interaction activity
+        try {
+          await ActivityLog.logActivity(
+            userId,
+            `pet_${interactionType}`,
+            'pet',
+            {
+              petId: pet._id.toString(),
+              interactionType,
+              moodAfter: pet.mood,
+              xpAfter: pet.xp,
+              statsAfter: pet.stats
+            },
+            pet._id.toString()
+          );
+        } catch (logError) {
+          console.error('Error logging pet interaction:', logError);
+        }
 
         return NextResponse.json({
           success: true,
