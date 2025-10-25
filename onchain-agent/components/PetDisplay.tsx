@@ -12,6 +12,8 @@ interface PetDisplayProps {
   walletAddress?: string;
   onAction: (action: 'feed' | 'play' | 'groom' | 'store') => void;
   onPetUpdate?: (updatedPet: Pet) => void;
+  onSwitchPets?: () => void;
+  onCreatePet?: () => void;
 }
 
 interface AnimationParticle {
@@ -22,7 +24,7 @@ interface AnimationParticle {
   delay: number;
 }
 
-export default function PetDisplay({ pet, walletAddress, onAction, onPetUpdate }: PetDisplayProps) {
+export default function PetDisplay({ pet, walletAddress, onAction, onPetUpdate, onSwitchPets, onCreatePet }: PetDisplayProps) {
   // Debug logging moved outside JSX
   console.log('PetDisplay - Pet object:', pet);
   console.log('PetDisplay - petWalletId:', pet.petWalletId);
@@ -227,6 +229,31 @@ export default function PetDisplay({ pet, walletAddress, onAction, onPetUpdate }
           >
             <span className="text-base sm:text-xl group-hover:scale-110 group-active:scale-95 transition-transform">🏪</span>
           </button>
+
+          {/* Pet Management Buttons */}
+          {onSwitchPets && (
+            <button
+              onClick={onSwitchPets}
+              className="w-9 h-9 sm:w-12 sm:h-12 bg-purple-600/80 backdrop-blur-xl rounded-full border border-white/20 hover:bg-purple-700 active:bg-purple-800 active:scale-95 transition-all duration-200 group flex items-center justify-center touch-manipulation shadow-lg"
+              title="Switch Pets"
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white group-hover:scale-110 group-active:scale-95 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </button>
+          )}
+
+          {onCreatePet && (
+            <button
+              onClick={onCreatePet}
+              className="w-9 h-9 sm:w-12 sm:h-12 bg-pink-600/80 backdrop-blur-xl rounded-full border border-white/20 hover:bg-pink-700 active:bg-pink-800 active:scale-95 transition-all duration-200 group flex items-center justify-center touch-manipulation shadow-lg"
+              title="Create New Pet"
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white group-hover:scale-110 group-active:scale-95 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Pet Name - Above Pet */}
@@ -279,8 +306,16 @@ export default function PetDisplay({ pet, walletAddress, onAction, onPetUpdate }
             </div>
           </div>
 
-          <div className="w-32 h-32 sm:w-80 sm:h-80 rounded-full bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-2xl gpu-accelerated">
-            <span className="animate-bounce" style={{ fontSize: 'clamp(4rem, 12vw, 20rem)', lineHeight: '1' }}>{getPetVisual()}</span>
+          <div className="w-32 h-32 sm:w-80 sm:h-80 rounded-full bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-2xl gpu-accelerated overflow-hidden">
+            {pet.imageUrl ? (
+              <img
+                src={pet.imageUrl}
+                alt={pet.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="animate-bounce" style={{ fontSize: 'clamp(4rem, 12vw, 20rem)', lineHeight: '1' }}>{getPetVisual()}</span>
+            )}
           </div>
 
           {/* Animation Particles Overlay */}

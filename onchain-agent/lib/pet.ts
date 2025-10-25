@@ -21,6 +21,7 @@ export interface Pet {
   petWalletAddress?: string;
   petWalletId?: string;
   basename?: string;
+  imageUrl?: string;
   stage: PetStage;
   mood: PetMood;
   xp: number;

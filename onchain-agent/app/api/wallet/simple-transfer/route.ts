@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CdpClient } from '@coinbase/cdp-sdk';
+import { Coinbase, Wallet } from '@coinbase/coinbase-sdk';
 import { parseUnits } from 'viem';
 import Wallets from '@/lib/models/Wallet';
 import Transaction from '@/lib/models/Transaction';
@@ -10,8 +10,31 @@ import { rateLimiters } from '@/lib/rate-limiter';
 // USDC contract address on Base Sepolia
 const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 
-// Initialize CDP client
-const cdp = new CdpClient();
+// Configure Coinbase SDK
+let isConfigured = false;
+
+function ensureCoinbaseConfigured() {
+  if (!isConfigured) {
+    try {
+      if (!process.env.CDP_API_KEY_ID || !process.env.CDP_API_KEY_SECRET) {
+        throw new Error('CDP_API_KEY_ID and CDP_API_KEY_SECRET must be set');
+      }
+
+      const config: any = {
+        apiKeyName: process.env.CDP_API_KEY_ID,
+        privateKey: process.env.CDP_API_KEY_SECRET,
+      };
+
+      Coinbase.configure(config);
+      isConfigured = true;
+      console.log('✅ Coinbase SDK configured');
+    } catch (error) {
+      console.error('Failed to configure Coinbase SDK:', error);
+      throw error;
+    }
+  }
+  return true;
+}
 
 /**
  * Simplified payment endpoint using CDP SDK's sendTransaction
@@ -25,6 +48,9 @@ export async function POST(request: NextRequest) {
     console.log(`\n${'='.repeat(80)}`);
     console.log(`💳 SIMPLE PAYMENT STARTED [${requestId}]`);
     console.log(`Time: ${new Date().toISOString()}`);
+    
+    // Ensure SDK is configured
+    ensureCoinbaseConfigured();
     
     // Rate limiting
     const rateLimitResponse = rateLimiters.transaction(request);
@@ -69,32 +95,50 @@ export async function POST(request: NextRequest) {
     
     console.log(`✅ Wallet found [${requestId}]`);
     
+    // Import wallet from stored data
+    if (!walletRecord.walletData) {
+      console.error(`❌ Wallet missing walletData [${requestId}]`);
+      return NextResponse.json(
+        { success: false, error: 'Wallet not properly initialized' },
+        { status: 400 }
+      );
+    }
+    
+    let wallet;
+    try {
+      const walletData = JSON.parse(walletRecord.walletData);
+      wallet = await Wallet.import(walletData);
+      console.log(`✅ Wallet imported [${requestId}]`);
+    } catch (importError: any) {
+      console.error(`❌ Failed to import wallet [${requestId}]:`, importError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to import wallet for signing' },
+        { status: 500 }
+      );
+    }
+    
     // Convert cents to USDC wei (6 decimals)
     const dollars = amountInCents / 100;
     const amountInWei = parseUnits(dollars.toString(), 6);
     
     console.log(`💰 Transfer amount: ${amountInWei} wei (${dollars} USDC)`);
     
-    // Encode USDC transfer function call
-    // transfer(address to, uint256 amount)
-    const transferData = `0xa9059cbb${
-      toAddress.slice(2).padStart(64, '0')
-    }${amountInWei.toString(16).padStart(64, '0')}`;
+    // Invoke USDC contract transfer method
+    console.log(`📤 Invoking USDC transfer [${requestId}]...`);
     
-    console.log(`📤 Sending transaction via CDP SDK [${requestId}]...`);
-    
-    // Use CDP SDK to send transaction with automatic gas sponsorship
-    const transactionResult = await cdp.evm.sendTransaction({
-      address: fromAddress,
-      transaction: {
-        to: USDC_ADDRESS,
-        data: transferData as `0x${string}`,
-        value: 0n // No ETH value, only USDC transfer
-      },
-      network: 'base-sepolia'
+    const contractInvocation = await wallet.invokeContract({
+      contractAddress: USDC_ADDRESS,
+      method: 'transfer',
+      args: {
+        to: toAddress,
+        value: amountInWei.toString()
+      }
     });
     
-    const transactionHash = transactionResult.transactionHash;
+    // Wait for transaction to be broadcast
+    await contractInvocation.wait();
+    
+    const transactionHash = contractInvocation.getTransactionHash();
     
     console.log(`✅ Transaction sent! [${requestId}]`);
     console.log(`   Hash: ${transactionHash}`);

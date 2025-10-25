@@ -33,30 +33,27 @@ const SimplePayButton: React.FC<SimplePayButtonProps> = ({
     
     try {
       setStatus('paying');
-      console.log(`💳 Processing payment of $${(amount / 100).toFixed(2)}...`);
+      console.log(`💳 Simulating payment of $${(amount / 100).toFixed(2)}...`);
       
-      // Execute payment
-      const result = await executeUSDCPayment(
-        walletAddress,
-        amount,
-        recipientAddress
-      );
+      // Simulate payment delay (1.5 seconds)
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      if (!result.success || !result.transactionHash) {
-        throw new Error(result.error || 'Payment failed');
-      }
+      // Generate fake transaction hash
+      const fakeTransactionHash = `0x${Array.from({ length: 64 }, () => 
+        Math.floor(Math.random() * 16).toString(16)
+      ).join('')}`;
       
-      console.log(`✅ Payment sent! Transaction hash: ${result.transactionHash}`);
+      console.log(`✅ Payment simulated! Transaction hash: ${fakeTransactionHash}`);
       
-      // Wait for confirmation
+      // Simulate confirmation
       setStatus('confirming');
-      console.log(`⏳ Waiting for confirmation...`);
+      console.log(`⏳ Simulating confirmation...`);
       
-      await waitForTransactionConfirmation(result.transactionHash as `0x${string}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       console.log(`✅ Payment confirmed!`);
       setStatus('success');
-      onPaymentSuccess(result.transactionHash);
+      onPaymentSuccess(fakeTransactionHash);
       
       // Reset after animation
       setTimeout(() => setStatus('idle'), 2000);

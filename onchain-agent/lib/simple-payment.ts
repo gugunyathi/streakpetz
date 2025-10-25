@@ -5,8 +5,8 @@ import { baseSepolia } from 'viem/chains';
 // USDC contract address on Base Sepolia
 export const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as const;
 
-// Store recipient address
-export const STORE_WALLET = '0x226710d13E6c16f1c99F34649526bD3bF17cd010' as const;
+// Store recipient address - all pet store payments go here
+export const STORE_WALLET = '0xF52aA3d9523990320451df68dCC6317e77704d67' as const;
 
 // ERC-20 transfer ABI
 const TRANSFER_ABI = [{

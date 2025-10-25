@@ -6,6 +6,8 @@ import { Pet, updatePetAfterInteraction } from '@/lib/pet';
 import PetDisplay from '@/components/PetDisplay';
 import LoginButton from '@/components/LoginButton';
 import PetStoreModal from '@/components/PetStoreModal';
+import CreatePetModal from '@/components/CreatePetModal';
+import PetSwitcher from '@/components/PetSwitcher';
 import { useAutoEvolution } from '@/app/hooks/useAutoEvolution';
 
 export default function Home() {
@@ -14,6 +16,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [isCreatePetModalOpen, setIsCreatePetModalOpen] = useState(false);
+  const [isPetSwitcherOpen, setIsPetSwitcherOpen] = useState(false);
 
   // Auto-evolution hook - checks and applies evolution automatically
   useAutoEvolution({
@@ -357,6 +361,47 @@ export default function Home() {
     }
   };
 
+  const handleCreatePet = (newPet: any) => {
+    console.log('New pet created:', newPet);
+    // Refresh pets or set as active pet
+    setPet({
+      id: newPet.id,
+      name: newPet.name,
+      userWalletAddress: walletAddress || '',
+      petWalletAddress: newPet.petWalletAddress,
+      petWalletId: newPet.petWalletId,
+      imageUrl: newPet.imageUrl,
+      stage: newPet.stage,
+      mood: newPet.mood,
+      xp: newPet.xp,
+      streak: newPet.streak,
+      lastInteraction: new Date(newPet.createdAt),
+      createdAt: new Date(newPet.createdAt),
+      personality: ['curious', 'playful'],
+      stats: newPet.stats
+    });
+  };
+
+  const handlePetSelected = (selectedPet: any) => {
+    console.log('Switching to pet:', selectedPet.name);
+    setPet({
+      id: selectedPet.id,
+      name: selectedPet.name,
+      userWalletAddress: walletAddress || '',
+      petWalletAddress: selectedPet.petWalletAddress,
+      petWalletId: selectedPet.petWalletId,
+      imageUrl: selectedPet.imageUrl,
+      stage: selectedPet.stage,
+      mood: selectedPet.mood,
+      xp: selectedPet.xp,
+      streak: selectedPet.streak,
+      lastInteraction: new Date(selectedPet.lastInteraction),
+      createdAt: new Date(selectedPet.createdAt),
+      personality: selectedPet.personality || ['curious', 'playful'],
+      stats: selectedPet.stats
+    });
+  };
+
   // Loading screen
   if (!ready || isLoading) {
     return (
@@ -468,7 +513,10 @@ export default function Home() {
               }}
                 onPetUpdate={(updatedPet) => {
                   setPet(updatedPet);
-                }} />
+                }}
+                onSwitchPets={() => setIsPetSwitcherOpen(true)}
+                onCreatePet={() => setIsCreatePetModalOpen(true)}
+              />
             </div>
           </div>
         )}
@@ -483,6 +531,33 @@ export default function Home() {
             onPurchaseComplete={(updatedPet) => {
               setPet(updatedPet);
               setIsStoreModalOpen(false);
+            }}
+          />
+        )}
+
+        {/* Create Pet Modal */}
+        {authenticated && user && (
+          <CreatePetModal
+            isOpen={isCreatePetModalOpen}
+            onClose={() => setIsCreatePetModalOpen(false)}
+            userId={user.id}
+            userWalletAddress={walletAddress || ''}
+            onPetCreated={handleCreatePet}
+          />
+        )}
+
+        {/* Pet Switcher Modal */}
+        {authenticated && user && pet && (
+          <PetSwitcher
+            isOpen={isPetSwitcherOpen}
+            onClose={() => setIsPetSwitcherOpen(false)}
+            userId={user.id}
+            userWalletAddress={walletAddress || ''}
+            currentPetId={pet.id}
+            onPetSelected={handlePetSelected}
+            onCreateNewPet={() => {
+              setIsPetSwitcherOpen(false);
+              setIsCreatePetModalOpen(true);
             }}
           />
         )}

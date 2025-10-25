@@ -33,6 +33,13 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
   const [userInventory, setUserInventory] = useState<UserInventory | null>(null);
   const [evolutionRequirements, setEvolutionRequirements] = useState<any>(null);
   const [showEvolutionTab, setShowEvolutionTab] = useState(false);
+  
+  // Celebration states
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationMessage, setCelebrationMessage] = useState('');
+  const [purchasedItemName, setPurchasedItemName] = useState('');
+  const [didEvolve, setDidEvolve] = useState(false);
+  const [evolutionStage, setEvolutionStage] = useState<string>('');
 
   // Initialize PetStore instance
   const petStore = new PetStore();
@@ -136,6 +143,9 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
     try {
       console.log('Recording purchase in database:', item.name, 'for pet:', pet.name);
       
+      // Show payment success immediately
+      setPurchasedItemName(item.name);
+      
       // Save purchase to database using API
       const recordResponse = await fetch('/api/pets/inventory', {
         method: 'POST',
@@ -146,7 +156,7 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
           itemId: item.id,
           quantity: 1,
           price: item.price,
-          transactionHash: transactionHash || 'pending'
+          transactionHash: transactionHash || 'simulated'
         })
       });
 
@@ -181,31 +191,37 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
             updatedPet.stage = autoEvolveResult.pet.stage;
             updatedPet.stats = autoEvolveResult.pet.stats;
             
+            // Show evolution celebration
+            setDidEvolve(true);
+            setEvolutionStage(autoEvolveResult.pet.stage);
+            
             if (autoEvolveResult.evolutionsApplied > 1) {
-              alert(`🎉 Amazing! ${pet.name} evolved ${autoEvolveResult.evolutionsApplied} times!\n${autoEvolveResult.evolutionLog.join('\n')}`);
+              setCelebrationMessage(`🎉 Amazing! ${pet.name} evolved ${autoEvolveResult.evolutionsApplied} times!\n${autoEvolveResult.evolutionLog.join('\n')}`);
             } else {
-              alert(`🎉 ${autoEvolveResult.message}`);
+              setCelebrationMessage(`🎉 ${autoEvolveResult.message}`);
             }
+          } else {
+            // Regular purchase celebration
+            setCelebrationMessage(`✅ Successfully purchased ${item.name}!`);
           }
         } catch (autoEvolveError) {
           console.warn('Auto-evolution check failed:', autoEvolveError);
-          // Continue even if auto-evolution fails
+          setCelebrationMessage(`✅ Successfully purchased ${item.name}!`);
         }
 
+        // Show celebration popup
+        setShowCelebration(true);
+        
         // Legacy fallback: Check if this was an evolution item and prompt manual evolution
-        if (item.evolutionItem) {
+        if (item.evolutionItem && !didEvolve) {
           const evolveCheckResponse = await fetch(
             `/api/pets/evolve?userId=${userWalletAddress}&petId=${pet.id}`
           );
           const evolveCheckResult = await evolveCheckResponse.json();
 
           if (evolveCheckResult.canEvolve) {
-            // Prompt user to evolve
-            const shouldEvolve = confirm(
-              `🎉 ${pet.name} has all the items needed to evolve! Evolve now?`
-            );
-
-            if (shouldEvolve) {
+            // Auto-trigger evolution
+            setTimeout(async () => {
               const evolveResponse = await fetch('/api/pets/evolve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -220,12 +236,13 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
               if (evolveResult.success) {
                 updatedPet.stage = evolveResult.pet.stage;
                 updatedPet.stats = evolveResult.pet.stats;
-                alert(evolveResult.message);
-              } else {
-                console.error('Evolution failed:', evolveResult.error);
-                alert(`Evolution check: ${evolveResult.error}`);
+                
+                setDidEvolve(true);
+                setEvolutionStage(evolveResult.pet.stage);
+                setCelebrationMessage(`🎉 ${evolveResult.message}`);
+                setShowCelebration(true);
               }
-            }
+            }, 1500);
           }
         }
         
@@ -241,14 +258,14 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
         // Call the completion handler with updated pet
         onPurchaseComplete(updatedPet);
         setSelectedItem(null);
-        
-        alert(`Successfully purchased ${item.name}!`);
       } else {
-        alert(`Purchase failed: ${recordResult.error}`);
+        setCelebrationMessage(`❌ Purchase failed: ${recordResult.error}`);
+        setShowCelebration(true);
       }
     } catch (error) {
       console.error('Purchase failed:', error);
-      alert('Purchase failed. Please try again.');
+      setCelebrationMessage('❌ Purchase failed. Please try again.');
+      setShowCelebration(true);
     } finally {
       setIsLoading(false);
     }
@@ -636,6 +653,139 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
           </AnimatePresence>
         </motion.div>
       </motion.div>
+      
+      {/* Celebration Modal */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100002] flex items-center justify-center p-4"
+            onClick={() => {
+              setShowCelebration(false);
+              setDidEvolve(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.5, opacity: 0, y: 50 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.5, opacity: 0, y: 50 }}
+              transition={{ type: "spring", damping: 15, stiffness: 200 }}
+              className="bg-gradient-to-br from-purple-600 via-pink-600 to-yellow-500 rounded-3xl shadow-2xl p-8 max-w-md w-full text-white text-center relative overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Animated Background Sparkles */}
+              <div className="absolute inset-0 overflow-hidden">
+                {[...Array(20)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute"
+                    initial={{
+                      x: Math.random() * 100 + '%',
+                      y: Math.random() * 100 + '%',
+                      scale: 0,
+                      opacity: 0
+                    }}
+                    animate={{
+                      scale: [0, 1, 0],
+                      opacity: [0, 1, 0],
+                      rotate: [0, 180, 360]
+                    }}
+                    transition={{
+                      duration: 2,
+                      delay: Math.random() * 2,
+                      repeat: Infinity,
+                      repeatDelay: Math.random() * 3
+                    }}
+                  >
+                    <Sparkles className="w-6 h-6 text-yellow-300" />
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Success Icon */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                  className="mx-auto w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6"
+                >
+                  {didEvolve ? (
+                    <Star className="w-12 h-12 text-yellow-300" fill="currentColor" />
+                  ) : (
+                    <CheckCircle className="w-12 h-12 text-green-300" />
+                  )}
+                </motion.div>
+
+                {/* Main Message */}
+                <motion.h2
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-3xl font-bold mb-4"
+                >
+                  {didEvolve ? '🎉 Evolution!' : '✨ Success!'}
+                </motion.h2>
+
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="text-xl mb-2 whitespace-pre-line"
+                >
+                  {celebrationMessage}
+                </motion.p>
+
+                {didEvolve && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.5, type: "spring" }}
+                    className="mt-6 p-4 bg-white/20 rounded-xl"
+                  >
+                    <p className="text-2xl font-bold mb-2">
+                      {pet.name} is now a {evolutionStage}!
+                    </p>
+                    <div className="flex items-center justify-center space-x-2 text-yellow-300">
+                      <Zap className="w-5 h-5" />
+                      <span className="font-semibold">New abilities unlocked!</span>
+                      <Zap className="w-5 h-5" />
+                    </div>
+                  </motion.div>
+                )}
+
+                {!didEvolve && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="text-sm text-white/80 mt-4"
+                  >
+                    {purchasedItemName} has been added to your inventory!
+                  </motion.p>
+                )}
+
+                {/* Close Button */}
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  onClick={() => {
+                    setShowCelebration(false);
+                    setDidEvolve(false);
+                  }}
+                  className="mt-8 px-8 py-3 bg-white text-purple-600 rounded-full font-bold text-lg hover:bg-purple-100 transition-colors"
+                >
+                  Awesome! 🎊
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AnimatePresence>
   );
 };

@@ -24,6 +24,7 @@ export interface IPet extends Document {
   petWalletAddress?: string;
   petWalletId?: string;
   basename?: string;
+  imageUrl?: string; // Custom pet image/GIF URL
   stage: PetStage;
   mood: PetMood;
   xp: number;
@@ -70,6 +71,10 @@ const PetSchema = new Schema<IPet>({
     trim: true
   },
   basename: {
+    type: String,
+    trim: true
+  },
+  imageUrl: {
     type: String,
     trim: true
   },
