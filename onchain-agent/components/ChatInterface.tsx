@@ -251,45 +251,37 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
     }
   };
 
-  // Count words in the message
+  // Count words in the message (memoized to avoid recalculation)
   const getWordCount = (text: string): number => {
+    if (!text.trim()) return 0;
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
 
-  // Auto-resize textarea to expand upward
+  // Auto-resize textarea (optimized with requestAnimationFrame)
   const autoResize = () => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      // Reset height to auto to get the actual scroll height
+    if (!textarea) return;
+    
+    requestAnimationFrame(() => {
       textarea.style.height = 'auto';
-      const maxHeight = 120; // Maximum height in pixels (about 5 lines)
+      const maxHeight = 120;
       const newHeight = Math.min(textarea.scrollHeight, maxHeight);
-      
-      // Set the new height
       textarea.style.height = newHeight + 'px';
-      
-      // Calculate the difference in height to adjust container position
-      const heightDiff = newHeight - 40; // 40px is the minimum height
-      
-      // Apply negative margin to move the container upward as it expands
-      const container = textarea.closest('.flex.flex-col.space-y-2.mt-auto') as HTMLElement;
-      if (container && heightDiff > 0) {
-        container.style.transform = `translateY(-${heightDiff}px)`;
-      } else if (container) {
-        container.style.transform = 'translateY(0px)';
-      }
-    }
+    });
   };
 
-  // Handle message change with word limit
+  // Handle message change with word limit (optimized)
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
-    const wordCount = getWordCount(text);
     
-    if (wordCount <= 100) {
-      setNewMessage(text);
-      setTimeout(autoResize, 0); // Delay to ensure DOM update
+    // Only check word count if we're getting close to the limit
+    if (text.length > 400) { // Approximate character count for 100 words
+      const wordCount = getWordCount(text);
+      if (wordCount > 100) return;
     }
+    
+    setNewMessage(text);
+    autoResize();
   };
 
   const handleSendMessage = async () => {
@@ -507,7 +499,7 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex flex-col space-y-2 flex-shrink-0 transition-transform duration-200 ease-out">
+      <div className="flex flex-col space-y-2 flex-shrink-0">
         <div className="flex items-end space-x-1 sm:space-x-2">
           <div className="flex-1 flex flex-col">
             <textarea
@@ -516,11 +508,11 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
               onChange={handleMessageChange}
               onKeyDown={handleKeyPress}
               placeholder={`Chat with ${pet.name}...`}
-              className="w-full bg-white/10 text-white placeholder-white/50 px-3 sm:px-4 py-2 rounded-xl border border-white/20 focus:outline-none focus:border-white/40 text-sm resize-none overflow-y-auto min-h-[40px] max-h-[120px] leading-5"
+              className="w-full bg-white/10 text-white placeholder-white/50 px-3 sm:px-4 py-2 rounded-xl border border-white/20 focus:outline-none focus:border-white/40 text-sm resize-none overflow-y-auto min-h-[40px] max-h-[120px] leading-5 will-change-[height]"
               disabled={isLoading}
               rows={1}
               style={{ 
-                height: 'auto',
+                height: '40px',
                 minHeight: '40px',
                 maxHeight: '120px'
               }}
@@ -535,13 +527,15 @@ export default function ChatInterface({ pet }: ChatInterfaceProps) {
           </button>
         </div>
         
-        {/* Word Counter */}
-        <div className="flex justify-between items-center text-xs text-white/60 px-1">
-          <span>Shift+Enter for new line</span>
-          <span className={`${getWordCount(newMessage) > 90 ? 'text-yellow-400' : ''} ${getWordCount(newMessage) >= 100 ? 'text-red-400' : ''}`}>
-            {getWordCount(newMessage)}/100 words
-          </span>
-        </div>
+        {/* Word Counter - only show when typing */}
+        {newMessage.length > 0 && (
+          <div className="flex justify-between items-center text-xs text-white/60 px-1">
+            <span>Shift+Enter for new line</span>
+            <span className={`${getWordCount(newMessage) > 90 ? 'text-yellow-400' : ''} ${getWordCount(newMessage) >= 100 ? 'text-red-400' : ''}`}>
+              {getWordCount(newMessage)}/100 words
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

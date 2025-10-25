@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingCart, Star, Sparkles, Heart, Zap, Wallet, Lock, CheckCircle } from 'lucide-react';
-import BasePayButton from './BasePayButton';
+import { X, ShoppingCart, Star, Sparkles, Heart, Zap, Wallet, CheckCircle } from 'lucide-react';
+import SimplePayButton from './SimplePayButton';
 import { Pet, PetMood, PetStage } from '@/lib/pet';
-import { getWalletUSDCBalance } from '@/lib/wallet';
+import { getUSDCBalance } from '@/lib/simple-payment';
 import { PetStore, StoreItem, UserInventory } from '@/lib/pet-store';
 
 interface PetStoreModalProps {
@@ -33,52 +33,12 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
   const [userInventory, setUserInventory] = useState<UserInventory | null>(null);
   const [evolutionRequirements, setEvolutionRequirements] = useState<any>(null);
   const [showEvolutionTab, setShowEvolutionTab] = useState(false);
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [isCheckingWallet, setIsCheckingWallet] = useState(false);
-  const [walletError, setWalletError] = useState<string | null>(null);
 
   // Initialize PetStore instance
   const petStore = new PetStore();
 
   // Fetch wallet balance and store data when modal opens
   useEffect(() => {
-    const checkWalletConnection = async () => {
-      if (!userWalletAddress || userWalletAddress === 'pending-wallet-creation') {
-        setIsWalletConnected(false);
-        setWalletError('Wallet not initialized');
-        return;
-      }
-
-      setIsCheckingWallet(true);
-      setWalletError(null);
-
-      try {
-        // Verify wallet exists in database (ensure lowercase for query)
-        const addressToCheck = userWalletAddress.toLowerCase();
-        const walletCheckResponse = await fetch(`/api/wallet?address=${addressToCheck}`);
-        
-        if (!walletCheckResponse.ok) {
-          throw new Error('Wallet not found in database');
-        }
-
-        const walletData = await walletCheckResponse.json();
-        
-        if (!walletData.success || !walletData.wallet) {
-          throw new Error('Wallet not properly initialized');
-        }
-
-        // Wallet is connected and valid
-        setIsWalletConnected(true);
-        setWalletError(null);
-      } catch (error) {
-        console.error('Wallet connection check failed:', error);
-        setIsWalletConnected(false);
-        setWalletError(error instanceof Error ? error.message : 'Wallet connection failed');
-      } finally {
-        setIsCheckingWallet(false);
-      }
-    };
-
     const fetchWalletBalance = async () => {
       if (!userWalletAddress || userWalletAddress === 'pending-wallet-creation') {
         setBalanceError('No wallet address provided');
@@ -89,11 +49,8 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
       setBalanceError(null);
 
       try {
-        const result = await getWalletUSDCBalance(userWalletAddress);
-        setWalletBalance(result.balance);
-        if (result.error) {
-          setBalanceError(result.error);
-        }
+        const balanceInCents = await getUSDCBalance(userWalletAddress);
+        setWalletBalance(balanceInCents);
       } catch (error) {
         console.error('Failed to fetch wallet balance:', error);
         setBalanceError('Failed to fetch balance');
@@ -126,63 +83,10 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
     };
 
     if (isOpen && userWalletAddress) {
-      checkWalletConnection();
       fetchWalletBalance();
       fetchStoreData();
     }
   }, [isOpen, userWalletAddress, pet.stage]);
-
-  // Handler to repair/reconnect wallet
-  const handleWalletRepair = async () => {
-    if (!userWalletAddress || userWalletAddress === 'pending-wallet-creation') {
-      alert('Please refresh the page to initialize your wallet.');
-      return;
-    }
-
-    setIsCheckingWallet(true);
-    setWalletError(null);
-
-    try {
-      console.log('Attempting to repair wallet:', userWalletAddress);
-      
-      const repairResponse = await fetch('/api/wallet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'repairWallet',
-          walletAddress: userWalletAddress
-        })
-      });
-
-      const repairResult = await repairResponse.json();
-
-      if (repairResult.success) {
-        setIsWalletConnected(true);
-        setWalletError(null);
-        
-        // Refresh balance after repair
-        const result = await getWalletUSDCBalance(userWalletAddress);
-        setWalletBalance(result.balance);
-        
-        alert('Wallet repaired successfully! You can now make purchases.');
-      } else {
-        // Check if we need to refresh page
-        if (repairResult.suggestion === 'refresh_page') {
-          if (confirm('This wallet cannot be repaired and needs to be reinitialized. Would you like to refresh the page now? (This will create a new wallet)')) {
-            window.location.reload();
-          }
-        } else {
-          throw new Error(repairResult.error || 'Wallet repair failed');
-        }
-      }
-    } catch (error) {
-      console.error('Wallet repair failed:', error);
-      setWalletError(error instanceof Error ? error.message : 'Failed to repair wallet');
-      alert('Failed to repair wallet. Please refresh the page and try again.');
-    } finally {
-      setIsCheckingWallet(false);
-    }
-  };
 
   const categories = [
     { id: 'all', name: 'All Items', icon: '🛍️' },
@@ -382,32 +286,8 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
                 </div>
               </div>
               <div className="flex items-center space-x-2 sm:space-x-4">
-                {/* Wallet Status and Balance Section */}
+                {/* Wallet Balance Section */}
                 <div className="text-right">
-                  {/* Wallet Connection Status */}
-                  <div className="flex items-center justify-end space-x-1 mb-1">
-                    {isCheckingWallet ? (
-                      <div className="flex items-center space-x-1 text-xs text-white/80">
-                        <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin"></div>
-                        <span>Checking...</span>
-                      </div>
-                    ) : isWalletConnected ? (
-                      <div className="flex items-center space-x-1 text-xs">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        <span className="text-green-300 font-medium">User Wallet Connected</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={handleWalletRepair}
-                        className="flex items-center space-x-1 text-xs bg-red-500/80 hover:bg-red-500 px-2 py-0.5 rounded-full transition-colors"
-                      >
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                        <span>Reconnect Wallet</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Balance Display */}
                   <div className="flex items-center space-x-1 justify-end">
                     <Wallet className="w-3 h-3 text-white/80" />
                     <p className="text-xs text-white/80">USDC Balance</p>
@@ -437,13 +317,6 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
                       {userWalletAddress.slice(0, 6)}...{userWalletAddress.slice(-4)}
                     </p>
                   )}
-                  
-                  {/* Warning if wallet not connected */}
-                  {!isWalletConnected && !isCheckingWallet && (
-                    <p className="text-xs text-red-300 mt-1 max-w-[150px]">
-                      ⚠️ Wallet not ready for payments
-                    </p>
-                  )}
                 </div>
                 <button
                   onClick={onClose}
@@ -456,16 +329,14 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
           </div>
 
           {/* Payment Info Banner */}
-          {isWalletConnected && (
-            <div className="bg-blue-50 border-b border-blue-200 px-3 sm:px-4 py-2">
-              <div className="flex items-center justify-center space-x-2 text-xs sm:text-sm">
+          <div className="bg-blue-50 border-b border-blue-200 px-3 sm:px-4 py-2">
+            <div className="flex items-center justify-center space-x-2 text-xs sm:text-sm">
                 <Wallet className="w-4 h-4 text-blue-600" />
                 <p className="text-blue-700">
                   <span className="font-semibold">Payment Source:</span> All purchases will be paid from your connected <span className="font-bold">User Wallet</span> (not pet wallet)
                 </p>
               </div>
             </div>
-          )}
 
           {/* Category Tabs */}
           <div className="p-2 sm:p-3 border-b border-gray-200">
@@ -604,50 +475,22 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
                           Owned
                         </button>
                       ) : item.inStock ? (
-                         <BasePayButton
+                         <SimplePayButton
                            amount={item.price}
                            walletAddress={userWalletAddress}
                            recipientAddress="0x226710d13E6c16f1c99F34649526bD3bF17cd010"
-                           network="base-sepolia"
-                           disabled={!isWalletConnected || isCheckingWallet}
-                           onPaymentSuccess={(paymentId: string) => {
-                             console.log('Gas-free payment successful:', paymentId);
-                             // Record purchase in database with transaction hash
-                             handlePurchase(item, paymentId);
+                           onPaymentSuccess={(txHash: string) => {
+                             console.log('Payment successful:', txHash);
+                             handlePurchase(item, txHash);
                            }}
                            onPaymentError={(error: string) => {
-                             console.error('Gas-free payment failed:', error);
-                             
-                             // Show user-friendly error message
-                             if (error.includes('Wallet repaired successfully')) {
-                               // Wallet was auto-repaired, user should retry
-                               alert('✅ Your wallet has been repaired!\n\nPlease click Buy again to complete your purchase.');
-                               // Refresh wallet status
-                               window.location.reload();
-                             } else if (error.includes('Reconnect Wallet button')) {
-                               // Auto-repair failed, user needs to use manual button
-                               alert(`⚠️ Wallet Issue Detected\n\n${error}\n\nPlease use the "Reconnect Wallet" button at the top of this window.`);
-                             } else if (error.includes('Wallet repaired')) {
-                               alert('✅ Your wallet has been repaired.\n\nPlease try your payment again.');
-                             } else if (error.includes('reinitialized') || error.includes('reconnect')) {
-                               alert(`⚠️ Wallet Error\n\n${error}\n\nPlease click the "Reconnect Wallet" button in the header.`);
-                             } else if (error.includes('Insufficient')) {
-                               alert(`💰 Insufficient Balance\n\n${error}\n\nPlease add more USDC to your wallet.`);
-                             } else {
-                               alert(`❌ Payment Failed\n\n${error}\n\nIf the problem persists, try:\n1. Click "Reconnect Wallet" button\n2. Refresh the page\n3. Contact support`);
-                             }
+                             console.error('Payment failed:', error);
+                             alert(`❌ Payment Failed\n\n${error}`);
                            }}
                            className="px-2.5 py-1 text-xs font-medium rounded-md"
                          >
-                           {!isWalletConnected ? (
-                             <span className="flex items-center space-x-1">
-                               <Lock className="w-3 h-3" />
-                               <span>Wallet Required</span>
-                             </span>
-                           ) : (
-                             <span>Buy ${(item.price / 100).toFixed(2)}</span>
-                           )}
-                         </BasePayButton>
+                           <span>Buy ${(item.price / 100).toFixed(2)}</span>
+                         </SimplePayButton>
                        ) : (
                         <button
                           disabled
@@ -757,53 +600,25 @@ const PetStoreModal: React.FC<PetStoreModalProps> = ({
                              Owned
                            </button>
                          ) : selectedItem.inStock ? (
-                           <BasePayButton
+                           <SimplePayButton
                            amount={selectedItem.price}
                            walletAddress={userWalletAddress}
                            recipientAddress="0x226710d13E6c16f1c99F34649526bD3bF17cd010"
-                           network="base-sepolia"
-                           disabled={!isWalletConnected || isCheckingWallet}
-                           onPaymentSuccess={(paymentId: string) => {
-                             console.log('Gas-free payment successful:', paymentId);
-                             // Record purchase in database with transaction hash
-                             handlePurchase(selectedItem, paymentId);
+                           onPaymentSuccess={(txHash: string) => {
+                             console.log('Payment successful:', txHash);
+                             handlePurchase(selectedItem, txHash);
                            }}
                            onPaymentError={(error: string) => {
-                             console.error('Gas-free payment failed:', error);
-                             
-                             // Show user-friendly error message
-                             if (error.includes('Wallet repaired successfully')) {
-                               // Wallet was auto-repaired, user should retry
-                               alert('✅ Your wallet has been repaired!\n\nPlease click Buy again to complete your purchase.');
-                               // Refresh wallet status
-                               window.location.reload();
-                             } else if (error.includes('Reconnect Wallet button')) {
-                               // Auto-repair failed, user needs to use manual button
-                               alert(`⚠️ Wallet Issue Detected\n\n${error}\n\nPlease use the "Reconnect Wallet" button at the top of this window.`);
-                             } else if (error.includes('Wallet repaired')) {
-                               alert('✅ Your wallet has been repaired.\n\nPlease try your payment again.');
-                             } else if (error.includes('reinitialized') || error.includes('reconnect')) {
-                               alert(`⚠️ Wallet Error\n\n${error}\n\nPlease click the "Reconnect Wallet" button in the header.`);
-                             } else if (error.includes('Insufficient')) {
-                               alert(`💰 Insufficient Balance\n\n${error}\n\nPlease add more USDC to your wallet.`);
-                             } else {
-                               alert(`❌ Payment Failed\n\n${error}\n\nIf the problem persists, try:\n1. Click "Reconnect Wallet" button\n2. Refresh the page\n3. Contact support`);
-                             }
+                             console.error('Payment failed:', error);
+                             alert(`❌ Payment Failed\n\n${error}`);
                            }}
                            className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm rounded-lg"
                          >
-                           {!isWalletConnected ? (
-                             <span className="flex items-center space-x-1">
-                               <Lock className="w-4 h-4" />
-                               <span>Connect Wallet to Buy</span>
-                             </span>
-                           ) : (
                              <span className="flex items-center space-x-1">
                                <Wallet className="w-4 h-4" />
-                               <span>Pay from User Wallet</span>
+                               <span>Pay ${(selectedItem.price / 100).toFixed(2)}</span>
                              </span>
-                           )}
-                         </BasePayButton>
+                         </SimplePayButton>
                          ) : (
                            <button
                              disabled
